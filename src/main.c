@@ -21,7 +21,7 @@
  */
 #define SDIO_DEBUG 0
 #define SDIO_BUF_SIZE 8192
-uint8_t sdio_buf[SDIO_BUF_SIZE];
+uint8_t sdio_buf[SDIO_BUF_SIZE] = { 0 };
 
 int _main(uint32_t task_id)
 {
@@ -172,11 +172,16 @@ int _main(uint32_t task_id)
 #if SDIO_DEBUG
           printf("received DMA write command to SDIO: @:%x size: %d\n",
                  dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
+
 #endif
+        printf("dumping SDIO buf");
+        hexdump(sdio_buf, 16);
         // write request.... let's write then...
         sd_write((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
 
-            sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
+        dataplane_command_ack.magic = DATA_WR_DMA_ACK;
+
+        sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
 
       }
       else if (   ret == SYS_E_DONE
@@ -187,8 +192,18 @@ int _main(uint32_t task_id)
                  dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
 #endif
         // read request.... let's read then...
+           
+        sd_read((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
 
-          sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
+        //memcpy(sdio_buf, "\xf5\x8c\x4c\x04\xd6\xe5\xf1\xba\x77\x9e\xab\xfb\x5f\x7b\xfb\xd6\x9c\xfc\x4e\x96\x7e\xdb\x80\x8d\x67\x9f\x77\x7b\xc6\x70\x2c\x7d\x39\xf2\x33\x69\xa9\xd9\xba\xcf\xa5\x30\xe2\x63\x04\x23\x14\x61\xb2\xeb\x05\xe2\xc3\x9b\xe9\xfc\xda\x6c\x19\x07\x8c\x6a\x9d\x1b", 64);
+        //memset(sdio_buf, 0x0, 512);
+
+
+        printf("dumping SDIO buf");
+        hexdump(sdio_buf, 16);
+        dataplane_command_ack.magic = DATA_RD_DMA_ACK;
+
+        sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
 
       }
 
