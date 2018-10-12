@@ -19,7 +19,7 @@
  * without compiler complain. argc/argv is not a goot idea in term
  * of size and calculation in a microcontroler
  */
-#define SDIO_DEBUG 0
+#define SDIO_DEBUG 1
 #define SDIO_BUF_SIZE 8192
 uint8_t sdio_buf[SDIO_BUF_SIZE] = { 0 };
 
@@ -169,15 +169,42 @@ int _main(uint32_t task_id)
           && id == id_crypto
           && dataplane_command_wr.magic == DATA_WR_DMA_REQ) {
 
-#if 1
+#if SDIO_DEBUG
           printf("!!!!!!!!!!! received DMA write command to SDIO: @:%x size: %d\n",
                  dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
 
-#endif
         printf("!!!!!!!!!! WRITE dumping SDIO buf @:%x size: %d\n", dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
-        hexdump(sdio_buf, 512);
+        //hexdump(sdio_buf, 512);
+#endif
+#if 0
+//          if (dataplane_command_wr.sector_address == 0x2002) {
+              for (int i = 0; i < 8192; i+=16) {
+                  printf("%x  %x  %x  %x  %x  %x  %x  %x  %x  %x  %x  %x  %x  %x  %x  %x \n",
+                          sdio_buf[i+0],
+                          sdio_buf[i+1],
+                          sdio_buf[i+2],
+                          sdio_buf[i+3],
+                          sdio_buf[i+4],
+                          sdio_buf[i+5],
+                          sdio_buf[i+6],
+                          sdio_buf[i+7],
+                          sdio_buf[i+8],
+                          sdio_buf[i+9],
+                          sdio_buf[i+10],
+                          sdio_buf[i+11],
+                          sdio_buf[i+12],
+                          sdio_buf[i+13],
+                          sdio_buf[i+14],
+                          sdio_buf[i+15]);
+              }
+ //         } 
+#endif
+
         // write request.... let's write then...
         sd_write((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
+
+        // FIXME debug: reinit buf to AAAA
+        memset(sdio_buf, 0x41, 8192);
 
         dataplane_command_ack.magic = DATA_WR_DMA_ACK;
 
@@ -187,9 +214,11 @@ int _main(uint32_t task_id)
       else if (   ret == SYS_E_DONE
                && id == id_crypto
                && dataplane_command_wr.magic == DATA_RD_DMA_REQ) {
-#if 1
-          printf("received DMA read command to SDIO: @:%x size: %d\n",
-                 dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
+#if SDIO_DEBUG
+          printf("received DMA read command to SDIO: @[sector] :%x @[bytes]: %x size: %d\n",
+                 dataplane_command_wr.sector_address,
+                 dataplane_command_wr.sector_address * 512,
+                 dataplane_command_wr.num_sectors);
 #endif
         // read request.... let's read then...
            
