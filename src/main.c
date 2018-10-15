@@ -19,7 +19,7 @@
  * without compiler complain. argc/argv is not a goot idea in term
  * of size and calculation in a microcontroler
  */
-#define SDIO_DEBUG 1
+#define SDIO_DEBUG 0
 #define SDIO_BUF_SIZE 8192
 uint8_t sdio_buf[SDIO_BUF_SIZE] = { 0 };
 
