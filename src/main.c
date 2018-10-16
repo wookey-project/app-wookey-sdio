@@ -160,84 +160,109 @@ int _main(uint32_t task_id)
      */
       struct dataplane_command dataplane_command_wr;
       struct dataplane_command dataplane_command_ack = { DATA_WR_DMA_ACK, 0, 0 };
-    while (1) {
-      uint8_t id = id_crypto;
-      logsize_t size = sizeof(struct dataplane_command);
+      t_ipc_command ipc_mainloop_cmd = { 0 };
 
-      ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&dataplane_command_wr);
-      if (   ret == SYS_E_DONE
-          && id == id_crypto
-          && dataplane_command_wr.magic == DATA_WR_DMA_REQ) {
+      while (1) {
+          uint8_t id = id_crypto;
+          logsize_t size = sizeof(t_ipc_command);
 
+          ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_mainloop_cmd);
+
+          if (ret != SYS_E_DONE) {
+              continue;
+          }
+
+          switch (ipc_mainloop_cmd.magic) {
+
+
+            case MAGIC_STORAGE_SCSI_BLOCK_SIZE_CMD:
+                {
+                    ipc_sync_cmd = ipc_mainloop_cmd.sync_cmd;
+                    ipc_sync_cmd.state = SYNC_DONE;
+                    ipc_sync_cmd.data_size = 4;
+                    uint32_t *data = (uint32_t*)&ipc_sync_cmd.data[0];
+                    *data = sd_get_block_size(); // FIXME
+                    /***************************************************
+                     * SDIO/USB block size synchronization
+                     **************************************************/
+                    /* now that SDIO has returned, let's return to USB */
+                    sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command), (char*)&ipc_sync_cmd);
+
+                    break;
+                }
+
+
+            case MAGIC_STORAGE_SCSI_BLOCK_NUM_CMD:
+                {
+                    /***************************************************
+                     * SDIO/USB block number synchronization
+                     **************************************************/
+                    ipc_sync_cmd = ipc_mainloop_cmd.sync_cmd;
+                    ipc_sync_cmd.state = SYNC_DONE;
+                    ipc_sync_cmd.data_size = 4;
+                    uint32_t *data = (uint32_t*)&ipc_sync_cmd.data[0];
+                    *data = sd_get_block_number(); // FIXME
+                    /***************************************************
+                     * SDIO/USB block size synchronization
+                     **************************************************/
+                    /* now that SDIO has returned, let's return to USB */
+                    sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command), (char*)&ipc_sync_cmd);
+
+                    break;
+                }
+
+
+
+              case DATA_WR_DMA_REQ:
+                  {
+                    dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
 #if SDIO_DEBUG
-          printf("!!!!!!!!!!! received DMA write command to SDIO: @:%x size: %d\n",
-                 dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
+                    printf("!!!!!!!!!!! received DMA write command to SDIO: @:%x size: %d\n",
+                            dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
 
-        printf("!!!!!!!!!! WRITE dumping SDIO buf @:%x size: %d\n", dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
-        //hexdump(sdio_buf, 512);
+                    printf("!!!!!!!!!! WRITE dumping SDIO buf @:%x size: %d\n", dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
 #endif
-#if 0
-//          if (dataplane_command_wr.sector_address == 0x2002) {
-              for (int i = 0; i < 8192; i+=16) {
-                  printf("%x  %x  %x  %x  %x  %x  %x  %x  %x  %x  %x  %x  %x  %x  %x  %x \n",
-                          sdio_buf[i+0],
-                          sdio_buf[i+1],
-                          sdio_buf[i+2],
-                          sdio_buf[i+3],
-                          sdio_buf[i+4],
-                          sdio_buf[i+5],
-                          sdio_buf[i+6],
-                          sdio_buf[i+7],
-                          sdio_buf[i+8],
-                          sdio_buf[i+9],
-                          sdio_buf[i+10],
-                          sdio_buf[i+11],
-                          sdio_buf[i+12],
-                          sdio_buf[i+13],
-                          sdio_buf[i+14],
-                          sdio_buf[i+15]);
-              }
- //         } 
-#endif
+                    // write request.... let's write then...
+                    sd_write((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
 
-        // write request.... let's write then...
-        sd_write((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
+                    dataplane_command_ack.magic = DATA_WR_DMA_ACK;
 
-        // FIXME debug: reinit buf to AAAA
-        memset(sdio_buf, 0x41, 8192);
+                    sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
+                    break;
 
-        dataplane_command_ack.magic = DATA_WR_DMA_ACK;
+                  }
 
-        sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
-
-      }
-      else if (   ret == SYS_E_DONE
-               && id == id_crypto
-               && dataplane_command_wr.magic == DATA_RD_DMA_REQ) {
+              case DATA_RD_DMA_REQ:
+                  {
+                    dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
 #if SDIO_DEBUG
-          printf("received DMA read command to SDIO: @[sector] :%x @[bytes]: %x size: %d\n",
-                 dataplane_command_wr.sector_address,
-                 dataplane_command_wr.sector_address * 512,
-                 dataplane_command_wr.num_sectors);
+                    printf("received DMA read command to SDIO: @[sector] :%x @[bytes]: %x size: %d\n",
+                            dataplane_command_wr.sector_address,
+                            dataplane_command_wr.sector_address * 512,
+                            dataplane_command_wr.num_sectors);
 #endif
-        // read request.... let's read then...
-           
-        sd_read((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
+                    // read request.... let's read then...
 
-        //memcpy(sdio_buf, "\xf5\x8c\x4c\x04\xd6\xe5\xf1\xba\x77\x9e\xab\xfb\x5f\x7b\xfb\xd6\x9c\xfc\x4e\x96\x7e\xdb\x80\x8d\x67\x9f\x77\x7b\xc6\x70\x2c\x7d\x39\xf2\x33\x69\xa9\xd9\xba\xcf\xa5\x30\xe2\x63\x04\x23\x14\x61\xb2\xeb\x05\xe2\xc3\x9b\xe9\xfc\xda\x6c\x19\x07\x8c\x6a\x9d\x1b", 64);
-        //memset(sdio_buf, 0x0, 512);
+                    sd_read((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
+
+                    dataplane_command_ack.magic = DATA_RD_DMA_ACK;
+
+                    sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
+                    break;
+
+                  }
 
 
-        //printf("READ dumping SDIO buf @:%x size: %d\n", dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
-        //hexdump(sdio_buf, 16);
-        dataplane_command_ack.magic = DATA_RD_DMA_ACK;
+              default:
+                  {
+                      printf("received invalid command from CRYPTO (magic: %d\n", ipc_mainloop_cmd.magic);
+                      ipc_mainloop_cmd.magic = MAGIC_INVALID;
+                      sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(t_ipc_command), (const char*)&ipc_mainloop_cmd);
+                      break;
 
-        sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
-
+                  }
+          }
       }
-
-
-    }
 
     return 0;
 }
