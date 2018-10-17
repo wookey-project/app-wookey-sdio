@@ -28,6 +28,7 @@ int _main(uint32_t task_id)
     e_syscall_ret ret;
     char *wellcome_msg = "hello, I'm sdio";
     struct sync_command ipc_sync_cmd;
+    struct sync_command_data ipc_sync_cmd_data;
     uint8_t id_crypto;
     uint8_t id;
     dma_shm_t dmashm_rd;
@@ -78,7 +79,7 @@ int _main(uint32_t task_id)
     /*******************************************
      * let's syncrhonize with other tasks
      *******************************************/
-    logsize_t size = 2;
+    logsize_t size = sizeof(struct sync_command);
 
     printf("sending end_of_init synchronization to crypto\n");
     ipc_sync_cmd.magic = MAGIC_TASK_STATE_CMD;
@@ -104,7 +105,7 @@ int _main(uint32_t task_id)
     printf("waiting end_of_cryp syncrhonization from crypto\n");
 
     id = id_crypto;
-    size = 2;
+    size = sizeof(struct sync_command);
 
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_sync_cmd);
 
@@ -118,7 +119,7 @@ int _main(uint32_t task_id)
 
     ipc_sync_cmd.magic = MAGIC_TASK_STATE_RESP;
     ipc_sync_cmd.state = SYNC_READY;
-    size = 2;
+    size = sizeof(struct sync_command);
     do {
       ret = sys_ipc(IPC_SEND_SYNC, id_crypto, size, (char*)&ipc_sync_cmd);
     } while (ret == SYS_E_BUSY);
@@ -177,16 +178,16 @@ int _main(uint32_t task_id)
 
             case MAGIC_STORAGE_SCSI_BLOCK_SIZE_CMD:
                 {
-                    ipc_sync_cmd = ipc_mainloop_cmd.sync_cmd;
-                    ipc_sync_cmd.state = SYNC_DONE;
-                    ipc_sync_cmd.data_size = 4;
-                    uint32_t *data = (uint32_t*)&ipc_sync_cmd.data[0];
-                    *data = sd_get_block_size(); // FIXME
+                    ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
+                    ipc_sync_cmd_data.magic = MAGIC_STORAGE_SCSI_BLOCK_SIZE_RESP;
+                    ipc_sync_cmd_data.state = SYNC_DONE;
+                    ipc_sync_cmd_data.data_size = 1;
+                    ipc_sync_cmd_data.data.u32[0] = sd_get_block_size();
                     /***************************************************
                      * SDIO/USB block size synchronization
                      **************************************************/
                     /* now that SDIO has returned, let's return to USB */
-                    sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command), (char*)&ipc_sync_cmd);
+                    sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command_data), (char*)&ipc_sync_cmd_data);
 
                     break;
                 }
@@ -197,16 +198,17 @@ int _main(uint32_t task_id)
                     /***************************************************
                      * SDIO/USB block number synchronization
                      **************************************************/
-                    ipc_sync_cmd = ipc_mainloop_cmd.sync_cmd;
-                    ipc_sync_cmd.state = SYNC_DONE;
-                    ipc_sync_cmd.data_size = 4;
-                    uint32_t *data = (uint32_t*)&ipc_sync_cmd.data[0];
-                    *data = sd_get_block_number(); // FIXME
+                    ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
+                    ipc_sync_cmd_data.magic = MAGIC_STORAGE_SCSI_BLOCK_NUM_RESP;
+                    ipc_sync_cmd_data.state = SYNC_DONE;
+                    ipc_sync_cmd_data.data_size = 2;
+                    ipc_sync_cmd_data.data.u32[0] = sd_get_block_size();
+                    ipc_sync_cmd_data.data.u32[1] = sd_get_capacity();
                     /***************************************************
                      * SDIO/USB block size synchronization
                      **************************************************/
                     /* now that SDIO has returned, let's return to USB */
-                    sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command), (char*)&ipc_sync_cmd);
+                    sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command_data), (char*)&ipc_sync_cmd_data);
 
                     break;
                 }
