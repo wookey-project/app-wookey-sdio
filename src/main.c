@@ -20,7 +20,7 @@
  * of size and calculation in a microcontroler
  */
 #define SDIO_DEBUG 0
-#define SDIO_BUF_SIZE 8192
+#define SDIO_BUF_SIZE 16384
 uint8_t sdio_buf[SDIO_BUF_SIZE] = { 0 };
 
 int _main(uint32_t task_id)
