@@ -4,6 +4,7 @@ config APP_SDIO
   bool "Sdio App"
   depends on STM32F4
   default y
+  select USR_LIB_WOOKEY
   ---help---
     Say y if you want to embbed SDIO custom application.
 

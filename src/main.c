@@ -9,7 +9,7 @@
 #include "api/print.h"
 #include "libsdio.h"
 #include "libsd.h"
-#include "ipc_proto.h"
+#include "wookey_ipc.h"
 
 /*
  * We use the local -fno-stack-protector flag for main because
