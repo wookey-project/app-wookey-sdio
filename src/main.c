@@ -160,7 +160,7 @@ int _main(uint32_t task_id)
      * event such as ISR or IPC.
      */
       struct dataplane_command dataplane_command_wr;
-      struct dataplane_command dataplane_command_ack = { DATA_WR_DMA_ACK, 0, 0 };
+      struct dataplane_command dataplane_command_ack = { MAGIC_DATA_WR_DMA_ACK, 0, 0 };
       t_ipc_command ipc_mainloop_cmd = { 0 };
 
       while (1) {
@@ -215,7 +215,7 @@ int _main(uint32_t task_id)
 
 
 
-              case DATA_WR_DMA_REQ:
+              case MAGIC_DATA_WR_DMA_REQ:
                   {
                     dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
 #if SDIO_DEBUG
@@ -227,14 +227,14 @@ int _main(uint32_t task_id)
                     // write request.... let's write then...
                     sd_write((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
 
-                    dataplane_command_ack.magic = DATA_WR_DMA_ACK;
+                    dataplane_command_ack.magic = MAGIC_DATA_WR_DMA_ACK;
 
                     sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
                     break;
 
                   }
 
-              case DATA_RD_DMA_REQ:
+              case MAGIC_DATA_RD_DMA_REQ:
                   {
                     dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
 #if SDIO_DEBUG
@@ -247,7 +247,7 @@ int _main(uint32_t task_id)
 
                     sd_read((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
 
-                    dataplane_command_ack.magic = DATA_RD_DMA_ACK;
+                    dataplane_command_ack.magic = MAGIC_DATA_RD_DMA_ACK;
 
                     sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
                     break;
