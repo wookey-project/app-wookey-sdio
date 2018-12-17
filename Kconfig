@@ -5,6 +5,7 @@ config APP_SDIO
   depends on STM32F4
   default y
   select USR_LIB_WOOKEY
+  select USR_LIB_SD
   ---help---
     Say y if you want to embbed SDIO custom application.
 
