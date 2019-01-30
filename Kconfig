@@ -46,7 +46,7 @@ config APP_SDIO_STACKSIZE
     Specify the application stack size, in bytes. By default, set to 8192
     (i.e. 8k). Depending on the number of slots required, and the usage,
     the stack can be bigger or smaller.
-    
+
 
 config APP_SDIO_SHM
   bool "SDIO requires shared memory to communicate with others"
@@ -89,7 +89,7 @@ config APP_SDIO_PERM_DEV_BUSES
 
 config APP_SDIO_PERM_DEV_EXTI
     bool "App can use EXTI or GPIO driven external interrupts"
-    default n
+    default y
 
 config APP_SDIO_PERM_DEV_TIM
     bool "App can register a hardware timer"
