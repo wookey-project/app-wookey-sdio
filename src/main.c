@@ -21,7 +21,10 @@
  */
 #define SDIO_DEBUG 0
 #define SDIO_BUF_SIZE 16384
-uint8_t sdio_buf[SDIO_BUF_SIZE] = { 0 };
+
+/* NOTE: alignment due to DMA */
+__attribute__((aligned(4))) uint8_t sdio_buf[SDIO_BUF_SIZE] = { 0 };
+
 extern volatile uint8_t SD_ejection_occured;
 
 void SDIO_asks_reset(uint8_t id_crypto)
