@@ -100,9 +100,11 @@ int _main(uint32_t task_id)
     ipc_sync_cmd.magic = MAGIC_TASK_STATE_CMD;
     ipc_sync_cmd.state = SYNC_READY;
 
-    do {
-        ret = sys_ipc(IPC_SEND_SYNC, id_crypto, size, (char*)&ipc_sync_cmd);
-    } while (ret == SYS_E_BUSY);
+    ret = sys_ipc(IPC_SEND_SYNC, id_crypto, size, (char*)&ipc_sync_cmd);
+    if (ret != SYS_E_DONE) {
+        printf("sys_ipc(IPC_SEND_SYNC, id_crypto) failed! Exiting...\n");
+        return 1;
+    }
 
     /* Now wait for Acknowledge from Smart */
     id = id_crypto;
@@ -137,9 +139,13 @@ int _main(uint32_t task_id)
     ipc_sync_cmd.magic = MAGIC_TASK_STATE_RESP;
     ipc_sync_cmd.state = SYNC_READY;
     size = sizeof(struct sync_command);
-    do {
-        ret = sys_ipc(IPC_SEND_SYNC, id_crypto, size, (char*)&ipc_sync_cmd);
-    } while (ret == SYS_E_BUSY);
+
+    ret = sys_ipc(IPC_SEND_SYNC, id_crypto, size, (char*)&ipc_sync_cmd);
+    if (ret != SYS_E_DONE) {
+        printf("sys_ipc(IPC_SEND_SYNC, id_crypto) failed! Exiting...\n");
+        return 1;
+    }
+
     // take some time to finish all sync ipc...
     sys_sleep(1000, SLEEP_MODE_INTERRUPTIBLE);
 
@@ -157,9 +163,12 @@ int _main(uint32_t task_id)
     dmashm_info.size = SDIO_BUF_SIZE;
 
     printf("informing crypto about DMA SHM...\n");
-    do {
-        ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dmashm_info), (char*)&dmashm_info);
-    } while (ret == SYS_E_BUSY);
+    ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dmashm_info), (char*)&dmashm_info);
+    if (ret != SYS_E_DONE) {
+        printf("sys_ipc(IPC_SEND_SYNC, id_crypto) failed! Exiting...\n");
+        return 1;
+    }
+
     printf("Crypto informed.\n");
 
 
