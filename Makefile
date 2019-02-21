@@ -64,7 +64,50 @@ TODEL_DISTCLEAN += $(APP_BUILD_DIR)
 #############################################################
 # build targets (driver, core, SoC, Board... and local)
 
-all: $(APP_BUILD_DIR) app
+all: $(APP_BUILD_DIR) alldeps app
+
+############################################################
+# eplicit dependency on the application libs and drivers
+# compiling the application requires the compilation of its
+# dependencies
+#
+## library dependencies
+LIBDEP := $(BUILD_DIR)/libs/libstd/libstd.a \
+          $(BUILD_DIR)/libs/libsd/libsd.a
+
+libdep: $(LIBDEP)
+
+$(LIBDEP):
+	$(Q)$(MAKE) -C $(PROJ_FILES)libs/$(patsubst lib%.a,%,$(notdir $@))
+
+
+# drivers dependencies
+SOCDRVDEP := $(BUILD_DIR)/drivers/libsdio/libsdio.a
+
+socdrvdep: $(SOCDRVDEP)
+
+$(SOCDRVDEP):
+	$(Q)$(MAKE) -C $(PROJ_FILES)drivers/socs/$(SOC)/$(patsubst lib%.a,%,$(notdir $@))
+
+# board drivers dependencies
+BRDDRVDEP    :=
+
+brddrvdep: $(BRDDRVDEP)
+
+$(BRDDRVDEP):
+	$(Q)$(MAKE) -C $(PROJ_FILES)drivers/boards/$(BOARD)/$(patsubst lib%.a,%,$(notdir $@))
+
+# external dependencies
+EXTDEP    :=
+
+extdep: $(EXTDEP)
+
+$(EXTDEP):
+	$(Q)$(MAKE) -C $(PROJ_FILES)externals
+
+
+alldeps: libdep socdrvdep brddrvdep extdep
+
 
 app: $(APP_BUILD_DIR)/$(ELF_NAME) $(APP_BUILD_DIR)/$(HEX_NAME)
 
