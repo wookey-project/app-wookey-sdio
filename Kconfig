@@ -6,6 +6,7 @@ config APP_SDIO
   default y
   select USR_LIB_WOOKEY
   select USR_LIB_SD
+  select USR_DRV_SDIO
   ---help---
     Say y if you want to embbed SDIO custom application.
 
