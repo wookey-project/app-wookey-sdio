@@ -187,7 +187,8 @@ int _main(uint32_t task_id)
      */
     struct dataplane_command dataplane_command_wr;
     struct dataplane_command dataplane_command_ack = { MAGIC_DATA_WR_DMA_ACK, 0, 0 };
-    t_ipc_command ipc_mainloop_cmd = { 0 };
+    t_ipc_command ipc_mainloop_cmd;
+    memset(&ipc_mainloop_cmd, 0, sizeof(t_ipc_command));
 
     while (1) {
         uint8_t id = id_crypto;
