@@ -148,9 +148,6 @@ int _main(uint32_t task_id)
         return 1;
     }
 
-    // take some time to finish all sync ipc...
-    sys_sleep(1000, SLEEP_MODE_INTERRUPTIBLE);
-
     /*******************************************
      * Sharing DMA SHM address and size with crypto
      *******************************************/
@@ -169,6 +166,12 @@ int _main(uint32_t task_id)
     if (ret != SYS_E_DONE) {
         printf("sys_ipc(IPC_SEND_SYNC, id_crypto) failed! Exiting...\n");
         return 1;
+    }
+
+    ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_sync_cmd);
+    if (   ipc_sync_cmd.magic == MAGIC_TASK_STATE_RESP
+            && ipc_sync_cmd.state == SYNC_ACKNOWLEDGE) {
+        printf("crypto has acknowledge DMA SHM, continuing\n");
     }
 
     printf("Crypto informed.\n");
