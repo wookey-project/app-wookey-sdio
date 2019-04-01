@@ -138,41 +138,57 @@ int _main(uint32_t task_id)
         SDIO_asks_reset(id_crypto);
     sd_init();
 
+    /************************************************
+     * Sending crypto end_of_service_init
+     ***********************************************/
+
     ipc_sync_cmd.magic = MAGIC_TASK_STATE_RESP;
     ipc_sync_cmd.state = SYNC_READY;
     size = sizeof(struct sync_command);
 
-    ret = sys_ipc(IPC_SEND_SYNC, id_crypto, size, (char*)&ipc_sync_cmd);
-    if (ret != SYS_E_DONE) {
-        printf("sys_ipc(IPC_SEND_SYNC, id_crypto) failed! Exiting...\n");
-        return 1;
+    do {
+      ret = sys_ipc(IPC_SEND_SYNC, id_crypto, size, (char*)&ipc_sync_cmd);
+      if (ret != SYS_E_DONE) {
+          printf("sending end of services init to crypto: Oops ! ret = %d\n", ret);
+      } else {
+          printf("sending end of services init to crypto ok\n");
+      }
+    } while (ret == SYS_E_BUSY);
+
+    /* waiting for crypto acknowledge */
+    ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_sync_cmd);
+    if (   ipc_sync_cmd.magic == MAGIC_TASK_STATE_RESP
+        && ipc_sync_cmd.state == SYNC_ACKNOWLEDGE) {
+        printf("crypto has acknowledge sync ready, continuing\n");
+    } else {
+        printf("Error ! IPC desynchro !\n");
     }
 
     /*******************************************
      * Sharing DMA SHM address and size with crypto
      *******************************************/
-    struct dmashm_info {
-        uint32_t addr;
-        uint16_t size;
-    };
 
-    struct dmashm_info dmashm_info;
-
-    dmashm_info.addr = (uint32_t)sdio_buf;
-    dmashm_info.size = SDIO_BUF_SIZE;
+    ipc_sync_cmd_data.magic = MAGIC_DMA_SHM_INFO_CMD;
+    ipc_sync_cmd_data.state = SYNC_READY;
+    ipc_sync_cmd_data.data_size = 2;
+    ipc_sync_cmd_data.data.u32[0] = (uint32_t)sdio_buf;
+    ipc_sync_cmd_data.data.u32[1] = SDIO_BUF_SIZE;
 
     printf("informing crypto about DMA SHM...\n");
-    ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dmashm_info), (char*)&dmashm_info);
+    ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command_data), (char*)&ipc_sync_cmd_data);
     if (ret != SYS_E_DONE) {
         printf("sys_ipc(IPC_SEND_SYNC, id_crypto) failed! Exiting...\n");
         return 1;
     }
 
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_sync_cmd);
-    if (   ipc_sync_cmd.magic == MAGIC_TASK_STATE_RESP
-            && ipc_sync_cmd.state == SYNC_ACKNOWLEDGE) {
+    if (   ipc_sync_cmd.magic == MAGIC_DMA_SHM_INFO_RESP
+        && ipc_sync_cmd.state == SYNC_ACKNOWLEDGE) {
         printf("crypto has acknowledge DMA SHM, continuing\n");
+    } else {
+        printf("Error ! IPC desynchro !\n");
     }
+
 
     printf("Crypto informed.\n");
 
