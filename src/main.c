@@ -207,7 +207,7 @@ int _main(uint32_t task_id)
      * event such as ISR or IPC.
      */
     struct dataplane_command dataplane_command_wr;
-    struct dataplane_command dataplane_command_ack = { MAGIC_DATA_WR_DMA_ACK, 0, 0 };
+    struct dataplane_command dataplane_command_ack = { MAGIC_DATA_WR_DMA_ACK, 0, 0, 0 };
     t_ipc_command ipc_mainloop_cmd;
     memset(&ipc_mainloop_cmd, 0, sizeof(t_ipc_command));
 
@@ -266,6 +266,8 @@ int _main(uint32_t task_id)
 
                 case MAGIC_DATA_WR_DMA_REQ:
                     {
+                        uint8_t ret;
+
                         dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
 #if SDIO_DEBUG
                         printf("!!!!!!!!!!! received DMA write command to SDIO: @:%x size: %d\n",
@@ -274,9 +276,14 @@ int _main(uint32_t task_id)
                         printf("!!!!!!!!!! WRITE dumping SDIO buf @:%x size: %d\n", dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
 #endif
                         // write request.... let's write then...
-                        sd_write((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
+                        ret = sd_write((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
 
                         dataplane_command_ack.magic = MAGIC_DATA_WR_DMA_ACK;
+                        if (ret == SD_SUCCESS) {
+                            dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
+                        } else {
+                            dataplane_command_ack.state = SYNC_FAILURE;
+                        }
 
                         sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
                         break;
@@ -285,6 +292,8 @@ int _main(uint32_t task_id)
 
                 case MAGIC_DATA_RD_DMA_REQ:
                     {
+                        uint8_t ret;
+
                         dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
 #if SDIO_DEBUG
                         printf("received DMA read command to SDIO: @[sector] :%x @[bytes]: %x size: %d\n",
@@ -294,12 +303,17 @@ int _main(uint32_t task_id)
 #endif
                         // read request.... let's read then...
 
-                        sd_read((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
+                        ret = sd_read((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
                         //Minimal error handling
                         if(sd_error != SD_SUCCESS) {
                             printf("SD_READ Something went wrong R1 register %x status reg %x\n", saver1, savestatus);
                         }
                         dataplane_command_ack.magic = MAGIC_DATA_RD_DMA_ACK;
+                        if (ret == SD_SUCCESS) {
+                            dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
+                        } else {
+                            dataplane_command_ack.state = SYNC_FAILURE;
+                        }
 
                         sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
                         break;
