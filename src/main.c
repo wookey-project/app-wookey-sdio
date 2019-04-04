@@ -213,6 +213,7 @@ int _main(uint32_t task_id)
 
     while (1) {
         uint8_t id = id_crypto;
+        uint8_t sd_ret;
         logsize_t size = sizeof(t_ipc_command);
 
         ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_mainloop_cmd);
@@ -224,9 +225,7 @@ int _main(uint32_t task_id)
 #endif
 
         if (ret == SYS_E_DONE) {
-
             switch (ipc_mainloop_cmd.magic) {
-
 
                 case MAGIC_STORAGE_SCSI_BLOCK_SIZE_CMD:
                     {
@@ -243,7 +242,6 @@ int _main(uint32_t task_id)
 
                         break;
                     }
-
 
                 case MAGIC_STORAGE_SCSI_BLOCK_NUM_CMD:
                     {
@@ -265,12 +263,8 @@ int _main(uint32_t task_id)
                         break;
                     }
 
-
-
                 case MAGIC_DATA_WR_DMA_REQ:
                     {
-                        uint8_t ret;
-
                         dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
 #if SDIO_DEBUG
                         printf("!!!!!!!!!!! received DMA write command to SDIO: @:%x size: %d\n",
@@ -279,24 +273,22 @@ int _main(uint32_t task_id)
                         printf("!!!!!!!!!! WRITE dumping SDIO buf @:%x size: %d\n", dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
 #endif
                         // write request.... let's write then...
-                        ret = sd_write((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
+                        sd_ret = sd_write((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
 
                         dataplane_command_ack.magic = MAGIC_DATA_WR_DMA_ACK;
-                        if (ret == SD_SUCCESS) {
-                            dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
-                        } else {
+                        if(sd_error != SD_SUCCESS || sd_ret != SD_SUCCESS) {
+                            printf("sd_write() failure : R1 register %x status reg %x\n", saver1, savestatus);
                             dataplane_command_ack.state = SYNC_FAILURE;
+                        } else {
+                            dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
                         }
 
                         sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
                         break;
-
                     }
 
                 case MAGIC_DATA_RD_DMA_REQ:
                     {
-                        uint8_t ret;
-
                         dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
 #if SDIO_DEBUG
                         printf("received DMA read command to SDIO: @[sector] :%x @[bytes]: %x size: %d\n",
@@ -306,23 +298,19 @@ int _main(uint32_t task_id)
 #endif
                         // read request.... let's read then...
 
-                        ret = sd_read((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
-                        //Minimal error handling
-                        if(sd_error != SD_SUCCESS) {
-                            printf("SD_READ Something went wrong R1 register %x status reg %x\n", saver1, savestatus);
-                        }
+                        sd_ret = sd_read((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
+
                         dataplane_command_ack.magic = MAGIC_DATA_RD_DMA_ACK;
-                        if (ret == SD_SUCCESS) {
-                            dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
-                        } else {
+                        if(sd_error != SD_SUCCESS || sd_ret != SD_SUCCESS) {
+                            printf("sd_read() failure : R1 register %x status reg %x\n", saver1, savestatus);
                             dataplane_command_ack.state = SYNC_FAILURE;
+                        } else {
+                            dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
                         }
 
                         sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
                         break;
-
                     }
-
 
                 default:
                     {
@@ -330,20 +318,21 @@ int _main(uint32_t task_id)
                         ipc_mainloop_cmd.magic = MAGIC_INVALID;
                         sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(t_ipc_command), (const char*)&ipc_mainloop_cmd);
                         break;
-
                     }
             }
         }
+
+        /*
+         *  The Card is not present in the connector
+         *  We indicate this to crypto that will forward the information
+         *  to afferent apps
+         */
         if (SD_ejection_occured) {
-            /*
-             *  The Card is not present in the connector
-             *  We indicate this to crypto that will forward the information
-             *  to afferent apps
-             */
             SDIO_asks_reset(id_crypto);
         }
     }
-    /* should never be reached */
+
+    /* Should never be reached !!! */
 
     return 0;
 }
