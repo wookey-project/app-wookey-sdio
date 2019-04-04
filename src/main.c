@@ -215,10 +215,13 @@ int _main(uint32_t task_id)
         uint8_t id = id_crypto;
         logsize_t size = sizeof(t_ipc_command);
 
-        ret = sys_ipc(IPC_RECV_ASYNC, &id, &size, (char*)&ipc_mainloop_cmd);
+        ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_mainloop_cmd);
         //Anything to do ?
-        if((ret != SYS_E_DONE) && (!SD_ejection_occured ))
-            sys_yield();
+#if 0
+        if((ret != SYS_E_DONE) && (!SD_ejection_occured )) {
+            continue;
+        }
+#endif
 
         if (ret == SYS_E_DONE) {
 
