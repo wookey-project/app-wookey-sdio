@@ -5,6 +5,7 @@
  *
  */
 
+#include "autoconf.h"
 #include "api/syscall.h"
 #include "api/stdio.h"
 #include "api/nostd.h"
@@ -12,6 +13,21 @@
 #include "libsdio.h"
 #include "libsd.h"
 #include "wookey_ipc.h"
+
+static inline void led_on(void)
+{
+    /* toggle led ON */
+    sys_cfg(CFG_GPIO_SET, (uint8_t)((('C' - 'A') << 4) + 5), 1);
+}
+static inline void led_off(void)
+{
+    /* toggle led ON */
+    sys_cfg(CFG_GPIO_SET, (uint8_t)((('C' - 'A') << 4) + 5), 0);
+}
+
+
+
+
 
 /*
  * We use the local -fno-stack-protector flag for main because
@@ -50,6 +66,7 @@ int _main(uint32_t task_id)
     uint8_t id;
     dma_shm_t dmashm_rd;
     dma_shm_t dmashm_wr;
+    int led_desc;
 
     printf("%s, my id is %x\n", wellcome_msg, task_id);
 
@@ -85,6 +102,33 @@ int _main(uint32_t task_id)
     ret = sys_init(INIT_DMA_SHM, &dmashm_wr);
     printf("sys_init returns %s !\n", strerror(ret));
 
+
+    /*********************************************
+     * Declaring SDIO read/write access LED
+     ********************************************/
+#if CONFIG_WOOKEY
+    // led info
+    //
+    printf("Declaring SDIO LED device\n");
+    device_t dev;
+    memset(&dev, 0, sizeof(device_t));
+    strncpy(dev.name, "sdio_led", sizeof("sdio_led"));
+    dev.gpio_num = 1;
+    dev.gpios[0].mask = GPIO_MASK_SET_MODE | GPIO_MASK_SET_PUPD | GPIO_MASK_SET_SPEED;
+    dev.gpios[0].kref.port = GPIO_PC;
+    dev.gpios[0].kref.pin = 5;
+    dev.gpios[0].pupd = GPIO_NOPULL;
+    dev.gpios[0].mode = GPIO_PIN_OUTPUT_MODE;
+    dev.gpios[0].speed = GPIO_PIN_HIGH_SPEED;
+
+    ret = sys_init(INIT_DEVACCESS, &dev, &led_desc);
+    if (ret != 0) {
+        printf("Error while declaring LED GPIO device: %d\n", ret);
+    }
+#endif
+
+
+
     /*******************************************
      * End of init
      *******************************************/
@@ -93,6 +137,9 @@ int _main(uint32_t task_id)
     ret = sys_init(INIT_DONE);
     printf("sys_init returns %s !\n", strerror(ret));
 
+#if CONFIG_WOOKEY
+    led_off();
+#endif
     /*******************************************
      * let's syncrhonize with other tasks
      *******************************************/
@@ -265,6 +312,9 @@ int _main(uint32_t task_id)
 
                 case MAGIC_DATA_WR_DMA_REQ:
                     {
+#if CONFIG_WOOKEY
+                        led_on();
+#endif
                         dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
 #if SDIO_DEBUG
                         printf("!!!!!!!!!!! received DMA write command to SDIO: @:%x size: %d\n",
@@ -283,12 +333,18 @@ int _main(uint32_t task_id)
                             dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
                         }
 
+#if CONFIG_WOOKEY
+                        led_off();
+#endif
                         sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
                         break;
                     }
 
                 case MAGIC_DATA_RD_DMA_REQ:
                     {
+#if CONFIG_WOOKEY
+                        led_on();
+#endif
                         dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
 #if SDIO_DEBUG
                         printf("received DMA read command to SDIO: @[sector] :%x @[bytes]: %x size: %d\n",
@@ -308,6 +364,9 @@ int _main(uint32_t task_id)
                             dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
                         }
 
+#if CONFIG_WOOKEY
+                        led_off();
+#endif
                         sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
                         break;
                     }
