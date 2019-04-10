@@ -13,16 +13,17 @@
 #include "libsdio.h"
 #include "libsd.h"
 #include "wookey_ipc.h"
+#include "generated/led1.h"
 
 static inline void led_on(void)
 {
     /* toggle led ON */
-    sys_cfg(CFG_GPIO_SET, (uint8_t)((('C' - 'A') << 4) + 5), 1);
+    sys_cfg(CFG_GPIO_SET, (uint8_t)((led1_dev_infos.gpios[LED1].port << 4) + led1_dev_infos.gpios[LED1].pin), 1);
 }
 static inline void led_off(void)
 {
-    /* toggle led ON */
-    sys_cfg(CFG_GPIO_SET, (uint8_t)((('C' - 'A') << 4) + 5), 0);
+    /* toggle led OFF */
+    sys_cfg(CFG_GPIO_SET, (uint8_t)((led1_dev_infos.gpios[LED1].port << 4) + led1_dev_infos.gpios[LED1].pin), 0);
 }
 
 
@@ -115,8 +116,8 @@ int _main(uint32_t task_id)
     strncpy(dev.name, "sdio_led", sizeof("sdio_led"));
     dev.gpio_num = 1;
     dev.gpios[0].mask = GPIO_MASK_SET_MODE | GPIO_MASK_SET_PUPD | GPIO_MASK_SET_SPEED;
-    dev.gpios[0].kref.port = GPIO_PC;
-    dev.gpios[0].kref.pin = 5;
+    dev.gpios[0].kref.port = led1_dev_infos.gpios[LED1].port;
+    dev.gpios[0].kref.pin = led1_dev_infos.gpios[LED1].pin;
     dev.gpios[0].pupd = GPIO_NOPULL;
     dev.gpios[0].mode = GPIO_PIN_OUTPUT_MODE;
     dev.gpios[0].speed = GPIO_PIN_HIGH_SPEED;
