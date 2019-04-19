@@ -132,7 +132,7 @@ $(APP_BUILD_DIR)/%.o: %.c
 	$(call if_changed,cc_o_c)
 
 # ELF
-$(APP_BUILD_DIR)/$(ELF_NAME): $(ROBJ) $(OBJ) $(SOBJ) $(DRVOBJ) $(BOARD_OBJ) $(CORE_OBJ) $(SOC_OBJ) $(BUILD_DIR)/libs/libstd/libstd.a $(BUILD_DIR)/drivers/libsdio/libsdio.a $(BUILD_DIR)/libs/libsd/libsd.a
+$(APP_BUILD_DIR)/$(ELF_NAME): $(OBJ)
 	$(call if_changed,link_o_target)
 
 # HEX
