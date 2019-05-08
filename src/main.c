@@ -72,9 +72,9 @@ int _main(uint32_t task_id)
     printf("%s, my id is %x\n", wellcome_msg, task_id);
 
     /* Early init phase of drivers/libs */
-    if(sd_early_init())
+    if(sd_early_init()){
         printf("SDIO KO !!!!! \n");
-
+    }
     ret = sys_init(INIT_GETTASKID, "crypto", &id_crypto);
     printf("crypto is task %x !\n", id_crypto);
 
@@ -153,15 +153,15 @@ int _main(uint32_t task_id)
     ret = sys_ipc(IPC_SEND_SYNC, id_crypto, size, (char*)&ipc_sync_cmd);
     if (ret != SYS_E_DONE) {
         printf("sys_ipc(IPC_SEND_SYNC, id_crypto) failed! Exiting...\n");
-        return 1;
+        goto err;
     }
 
     /* Now wait for Acknowledge from Smart */
     id = id_crypto;
 
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_sync_cmd);
-    if (   ipc_sync_cmd.magic == MAGIC_TASK_STATE_RESP
-            && ipc_sync_cmd.state == SYNC_ACKNOWLEDGE) {
+    if (   (ipc_sync_cmd.magic == MAGIC_TASK_STATE_RESP)
+            && (ipc_sync_cmd.state == SYNC_ACKNOWLEDGE)) {
         printf("crypto has acknowledge end_of_init, continuing\n");
     }
 
@@ -176,14 +176,15 @@ int _main(uint32_t task_id)
 
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_sync_cmd);
 
-    if (   ipc_sync_cmd.magic == MAGIC_TASK_STATE_CMD
-            && ipc_sync_cmd.state == SYNC_READY) {
+    if (   (ipc_sync_cmd.magic == MAGIC_TASK_STATE_CMD)
+            && (ipc_sync_cmd.state == SYNC_READY)) {
         printf("crypto module is ready\n");
     }
 
     /* init phase of drivers/libs */
-    if(SD_ejection_occured)
+    if(SD_ejection_occured){
         SDIO_asks_reset(id_crypto);
+    }
     sd_init();
 
     /************************************************
@@ -201,12 +202,12 @@ int _main(uint32_t task_id)
       } else {
           printf("sending end of services init to crypto ok\n");
       }
-    } while (ret == SYS_E_BUSY);
+    } while (ret != SYS_E_DONE);
 
     /* waiting for crypto acknowledge */
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_sync_cmd);
-    if (   ipc_sync_cmd.magic == MAGIC_TASK_STATE_RESP
-        && ipc_sync_cmd.state == SYNC_ACKNOWLEDGE) {
+    if (   (ipc_sync_cmd.magic == MAGIC_TASK_STATE_RESP)
+        && (ipc_sync_cmd.state == SYNC_ACKNOWLEDGE)) {
         printf("crypto has acknowledge sync ready, continuing\n");
     } else {
         printf("Error ! IPC desynchro !\n");
@@ -226,15 +227,20 @@ int _main(uint32_t task_id)
     ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command_data), (char*)&ipc_sync_cmd_data);
     if (ret != SYS_E_DONE) {
         printf("sys_ipc(IPC_SEND_SYNC, id_crypto) failed! Exiting...\n");
-        return 1;
+        goto err;
     }
 
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_sync_cmd);
-    if (   ipc_sync_cmd.magic == MAGIC_DMA_SHM_INFO_RESP
-        && ipc_sync_cmd.state == SYNC_ACKNOWLEDGE) {
+    if(ret != SYS_E_DONE){
+        printf("sys_ipc(IPC_RECV_SYNC) failed! Exiting...\n");
+        goto err;
+    }
+    if (   (ipc_sync_cmd.magic == MAGIC_DMA_SHM_INFO_RESP)
+        && (ipc_sync_cmd.state == SYNC_ACKNOWLEDGE)) {
         printf("crypto has acknowledge DMA SHM, continuing\n");
     } else {
         printf("Error ! IPC desynchro !\n");
+        goto err;
     }
 
 
@@ -286,8 +292,10 @@ int _main(uint32_t task_id)
                          * SDIO/USB block size synchronization
                          **************************************************/
                         /* now that SDIO has returned, let's return to USB */
-                        sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command_data), (char*)&ipc_sync_cmd_data);
-
+                        ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command_data), (char*)&ipc_sync_cmd_data);
+                        if(ret != SYS_E_DONE){
+                            goto err;
+                        }
                         break;
                     }
 
@@ -306,8 +314,10 @@ int _main(uint32_t task_id)
                          * SDIO/USB block size synchronization
                          **************************************************/
                         /* now that SDIO has returned, let's return to USB */
-                        sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command_data), (char*)&ipc_sync_cmd_data);
-
+                        ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command_data), (char*)&ipc_sync_cmd_data);
+                        if(ret != SYS_E_DONE){
+                            goto err;
+                        }
                         break;
                     }
 
@@ -337,7 +347,10 @@ int _main(uint32_t task_id)
 #if CONFIG_WOOKEY
                         led_off();
 #endif
-                        sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
+                        ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
+                        if(ret != SYS_E_DONE){
+                            goto err;
+                        }
                         break;
                     }
 
@@ -368,7 +381,10 @@ int _main(uint32_t task_id)
 #if CONFIG_WOOKEY
                         led_off();
 #endif
-                        sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
+                        ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
+                        if(ret != SYS_E_DONE){
+                            goto err;
+                        }
                         break;
                     }
 
@@ -376,7 +392,10 @@ int _main(uint32_t task_id)
                     {
                         printf("received invalid command from CRYPTO (magic: %d\n", ipc_mainloop_cmd.magic);
                         ipc_mainloop_cmd.magic = MAGIC_INVALID;
-                        sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(t_ipc_command), (const char*)&ipc_mainloop_cmd);
+                        ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(t_ipc_command), (const char*)&ipc_mainloop_cmd);
+                        if(ret != SYS_E_DONE){
+                            goto err;
+                        }
                         break;
                     }
             }
@@ -392,8 +411,8 @@ int _main(uint32_t task_id)
         }
     }
 
-    /* Should never be reached !!! */
-
-    return 0;
+err:
+    /* Should never be reached except in case of error!!! */    
+    return 1;
 }
 
