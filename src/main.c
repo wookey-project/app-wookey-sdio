@@ -85,7 +85,7 @@ int _main(uint32_t task_id)
 
     ret = sys_init(INIT_GETTASKID, "crypto", &id_crypto);
     if (ret != SYS_E_DONE) {
-        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+        printf("Oops! %s:%d\n", __func__, __LINE__);
         goto error;
     }
 
@@ -111,7 +111,7 @@ int _main(uint32_t task_id)
     printf("Declaring DMA_SHM for SDIO read flow\n");
     ret = sys_init(INIT_DMA_SHM, &dmashm_rd);
     if (ret != SYS_E_DONE) {
-        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+        printf("Oops! %s:%d\n", __func__, __LINE__);
         goto error;
     }
     printf("sys_init returns %s !\n", strerror(ret));
@@ -119,7 +119,7 @@ int _main(uint32_t task_id)
     printf("Declaring DMA_SHM for SDIO write flow\n");
     ret = sys_init(INIT_DMA_SHM, &dmashm_wr);
     if (ret != SYS_E_DONE) {
-        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+        printf("Oops! %s:%d\n", __func__, __LINE__);
         goto error;
     }
     printf("sys_init returns %s !\n", strerror(ret));
@@ -172,7 +172,7 @@ int _main(uint32_t task_id)
 
     ret = sys_ipc(IPC_SEND_SYNC, id_crypto, size, (char *) &ipc_sync_cmd);
     if (ret != SYS_E_DONE) {
-        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+        printf("Oops! %s:%d\n", __func__, __LINE__);
         goto error;
     }
 
@@ -181,7 +181,7 @@ int _main(uint32_t task_id)
 
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char *) &ipc_sync_cmd);
     if (ret != SYS_E_DONE) {
-        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+        printf("Oops! %s:%d\n", __func__, __LINE__);
         goto error;
     }
 
@@ -201,7 +201,7 @@ int _main(uint32_t task_id)
 
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char *) &ipc_sync_cmd);
     if (ret != SYS_E_DONE) {
-        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+        printf("Oops! %s:%d\n", __func__, __LINE__);
         goto error;
     }
 
@@ -236,7 +236,7 @@ int _main(uint32_t task_id)
     /* Waiting for crypto acknowledge */
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char *) &ipc_sync_cmd);
     if (ret != SYS_E_DONE) {
-        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+        printf("Oops! %s:%d\n", __func__, __LINE__);
         goto error;
     }
 
@@ -308,7 +308,7 @@ int _main(uint32_t task_id)
         ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char *) &ipc_mainloop_cmd);
 
         if (ret != SYS_E_DONE) {
-            printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+            printf("Oops! %s:%d\n", __func__, __LINE__);
             goto error;
         }
 #if 0
