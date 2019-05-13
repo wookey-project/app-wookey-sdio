@@ -15,20 +15,6 @@
 #include "wookey_ipc.h"
 #include "generated/led1.h"
 
-static inline void led_on(void)
-{
-    /* toggle led ON */
-    sys_cfg(CFG_GPIO_SET, (uint8_t)((led1_dev_infos.gpios[LED1].port << 4) + led1_dev_infos.gpios[LED1].pin), 1);
-}
-static inline void led_off(void)
-{
-    /* toggle led OFF */
-    sys_cfg(CFG_GPIO_SET, (uint8_t)((led1_dev_infos.gpios[LED1].port << 4) + led1_dev_infos.gpios[LED1].pin), 0);
-}
-
-
-
-
 
 /*
  * We use the local -fno-stack-protector flag for main because
@@ -46,6 +32,21 @@ __attribute__((aligned(4))) uint8_t sdio_buf[SDIO_BUF_SIZE] = { 0 };
 
 extern volatile uint8_t SD_ejection_occured;
 
+
+static inline void led_on(void)
+{
+    /* toggle led ON */
+    sys_cfg(CFG_GPIO_SET, (uint8_t)((led1_dev_infos.gpios[LED1].port << 4) + led1_dev_infos.gpios[LED1].pin), 1);
+}
+
+
+static inline void led_off(void)
+{
+    /* toggle led OFF */
+    sys_cfg(CFG_GPIO_SET, (uint8_t)((led1_dev_infos.gpios[LED1].port << 4) + led1_dev_infos.gpios[LED1].pin), 0);
+}
+
+
 void SDIO_asks_reset(uint8_t id_crypto)
 {
   struct sync_command ipc_sync_cmd;
@@ -54,8 +55,8 @@ void SDIO_asks_reset(uint8_t id_crypto)
   ipc_sync_cmd.state=SYNC_WAIT;
 
   sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command), (char*)&ipc_sync_cmd);
-
 }
+
 
 int _main(uint32_t task_id)
 {
@@ -75,7 +76,13 @@ int _main(uint32_t task_id)
     if(sd_early_init()){
         printf("SDIO KO !!!!! \n");
     }
+
     ret = sys_init(INIT_GETTASKID, "crypto", &id_crypto);
+    if (ret != SYS_E_DONE) {
+        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+        goto error;
+    }
+
     printf("crypto is task %x !\n", id_crypto);
 
     /*********************************************
@@ -97,19 +104,24 @@ int _main(uint32_t task_id)
 
     printf("Declaring DMA_SHM for SDIO read flow\n");
     ret = sys_init(INIT_DMA_SHM, &dmashm_rd);
+    if (ret != SYS_E_DONE) {
+        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+        goto error;
+    }
     printf("sys_init returns %s !\n", strerror(ret));
 
     printf("Declaring DMA_SHM for SDIO write flow\n");
     ret = sys_init(INIT_DMA_SHM, &dmashm_wr);
+    if (ret != SYS_E_DONE) {
+        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+        goto error;
+    }
     printf("sys_init returns %s !\n", strerror(ret));
 
-
+#if CONFIG_WOOKEY
     /*********************************************
      * Declaring SDIO read/write access LED
      ********************************************/
-#if CONFIG_WOOKEY
-    // led info
-    //
     printf("Declaring SDIO LED device\n");
     device_t dev;
     memset(&dev, 0, sizeof(device_t));
@@ -123,12 +135,11 @@ int _main(uint32_t task_id)
     dev.gpios[0].speed = GPIO_PIN_HIGH_SPEED;
 
     ret = sys_init(INIT_DEVACCESS, &dev, &led_desc);
-    if (ret != 0) {
+    if (ret != SYS_E_DONE) {
         printf("Error while declaring LED GPIO device: %d\n", ret);
+        goto error;
     }
 #endif
-
-
 
     /*******************************************
      * End of init
@@ -141,6 +152,7 @@ int _main(uint32_t task_id)
 #if CONFIG_WOOKEY
     led_off();
 #endif
+
     /*******************************************
      * let's syncrhonize with other tasks
      *******************************************/
@@ -152,14 +164,19 @@ int _main(uint32_t task_id)
 
     ret = sys_ipc(IPC_SEND_SYNC, id_crypto, size, (char*)&ipc_sync_cmd);
     if (ret != SYS_E_DONE) {
-        printf("sys_ipc(IPC_SEND_SYNC, id_crypto) failed! Exiting...\n");
-        goto err;
+        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+        goto error;
     }
 
     /* Now wait for Acknowledge from Smart */
     id = id_crypto;
 
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_sync_cmd);
+    if (ret != SYS_E_DONE) {
+        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+        goto error;
+    }
+
     if (   (ipc_sync_cmd.magic == MAGIC_TASK_STATE_RESP)
             && (ipc_sync_cmd.state == SYNC_ACKNOWLEDGE)) {
         printf("crypto has acknowledge end_of_init, continuing\n");
@@ -175,6 +192,10 @@ int _main(uint32_t task_id)
     size = sizeof(struct sync_command);
 
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_sync_cmd);
+    if (ret != SYS_E_DONE) {
+        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+        goto error;
+    }
 
     if (   (ipc_sync_cmd.magic == MAGIC_TASK_STATE_CMD)
             && (ipc_sync_cmd.state == SYNC_READY)) {
@@ -195,17 +216,21 @@ int _main(uint32_t task_id)
     ipc_sync_cmd.state = SYNC_READY;
     size = sizeof(struct sync_command);
 
-    do {
-      ret = sys_ipc(IPC_SEND_SYNC, id_crypto, size, (char*)&ipc_sync_cmd);
-      if (ret != SYS_E_DONE) {
-          printf("sending end of services init to crypto: Oops ! ret = %d\n", ret);
-      } else {
-          printf("sending end of services init to crypto ok\n");
-      }
-    } while (ret != SYS_E_DONE);
+    ret = sys_ipc(IPC_SEND_SYNC, id_crypto, size, (char*)&ipc_sync_cmd);
+    if (ret != SYS_E_DONE) {
+        printf("sending end of services init to crypto: Oops ! ret = %d\n", ret);
+        goto error;
+    } else {
+        printf("sending end of services init to crypto ok\n");
+    }
 
-    /* waiting for crypto acknowledge */
+    /* Waiting for crypto acknowledge */
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_sync_cmd);
+    if (ret != SYS_E_DONE) {
+        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+        goto error;
+    }
+
     if (   (ipc_sync_cmd.magic == MAGIC_TASK_STATE_RESP)
         && (ipc_sync_cmd.state == SYNC_ACKNOWLEDGE)) {
         printf("crypto has acknowledge sync ready, continuing\n");
@@ -227,25 +252,23 @@ int _main(uint32_t task_id)
     ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command_data), (char*)&ipc_sync_cmd_data);
     if (ret != SYS_E_DONE) {
         printf("sys_ipc(IPC_SEND_SYNC, id_crypto) failed! Exiting...\n");
-        goto err;
+        goto error;
     }
 
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_sync_cmd);
     if(ret != SYS_E_DONE){
         printf("sys_ipc(IPC_RECV_SYNC) failed! Exiting...\n");
-        goto err;
+        goto error;
     }
     if (   (ipc_sync_cmd.magic == MAGIC_DMA_SHM_INFO_RESP)
         && (ipc_sync_cmd.state == SYNC_ACKNOWLEDGE)) {
         printf("crypto has acknowledge DMA SHM, continuing\n");
     } else {
         printf("Error ! IPC desynchro !\n");
-        goto err;
+        goto error;
     }
 
-
     printf("Crypto informed.\n");
-
 
     /*******************************************
      * Main read/write loop
@@ -254,7 +277,6 @@ int _main(uint32_t task_id)
      *******************************************/
 
     printf("SDIO main loop starting\n");
-
 
     /*
      * Main waiting loopt. The task main thread is awoken by any external
@@ -271,133 +293,141 @@ int _main(uint32_t task_id)
         logsize_t size = sizeof(t_ipc_command);
 
         ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char*)&ipc_mainloop_cmd);
-        //Anything to do ?
+
+        if (ret != SYS_E_DONE) {
+            printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+            goto error;
+        }
+
 #if 0
         if((ret != SYS_E_DONE) && (!SD_ejection_occured )) {
             continue;
         }
 #endif
 
-        if (ret == SYS_E_DONE) {
-            switch (ipc_mainloop_cmd.magic) {
+        switch (ipc_mainloop_cmd.magic) {
 
-                case MAGIC_STORAGE_SCSI_BLOCK_SIZE_CMD:
-                    {
-                        ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
-                        ipc_sync_cmd_data.magic = MAGIC_STORAGE_SCSI_BLOCK_SIZE_RESP;
-                        ipc_sync_cmd_data.state = SYNC_DONE;
-                        ipc_sync_cmd_data.data_size = 1;
-                        ipc_sync_cmd_data.data.u32[0] = sd_get_block_size();
-                        /***************************************************
-                         * SDIO/USB block size synchronization
-                         **************************************************/
-                        /* now that SDIO has returned, let's return to USB */
-                        ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command_data), (char*)&ipc_sync_cmd_data);
-                        if(ret != SYS_E_DONE){
-                            goto err;
-                        }
-                        break;
-                    }
+            case MAGIC_STORAGE_SCSI_BLOCK_SIZE_CMD:
+            {
+                ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
+                ipc_sync_cmd_data.magic = MAGIC_STORAGE_SCSI_BLOCK_SIZE_RESP;
+                ipc_sync_cmd_data.state = SYNC_DONE;
+                ipc_sync_cmd_data.data_size = 1;
+                ipc_sync_cmd_data.data.u32[0] = sd_get_block_size();
+                /***************************************************
+                 * SDIO/USB block size synchronization
+                 **************************************************/
+                /* now that SDIO has returned, let's return to USB */
+                ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command_data), (char*)&ipc_sync_cmd_data);
+                if(ret != SYS_E_DONE){
+                    printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+                    goto error;
+                }
+                break;
+            }
 
-                case MAGIC_STORAGE_SCSI_BLOCK_NUM_CMD:
-                    {
-                        /***************************************************
-                         * SDIO/USB block number synchronization
-                         **************************************************/
-                        ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
-                        ipc_sync_cmd_data.magic = MAGIC_STORAGE_SCSI_BLOCK_NUM_RESP;
-                        ipc_sync_cmd_data.state = SYNC_DONE;
-                        ipc_sync_cmd_data.data_size = 2;
-                        ipc_sync_cmd_data.data.u32[0] = sd_get_block_size();
-                        ipc_sync_cmd_data.data.u32[1] = sd_get_capacity();
-                        /***************************************************
-                         * SDIO/USB block size synchronization
-                         **************************************************/
-                        /* now that SDIO has returned, let's return to USB */
-                        ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command_data), (char*)&ipc_sync_cmd_data);
-                        if(ret != SYS_E_DONE){
-                            goto err;
-                        }
-                        break;
-                    }
+            case MAGIC_STORAGE_SCSI_BLOCK_NUM_CMD:
+            {
+                /***************************************************
+                 * SDIO/USB block number synchronization
+                 **************************************************/
+                ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
+                ipc_sync_cmd_data.magic = MAGIC_STORAGE_SCSI_BLOCK_NUM_RESP;
+                ipc_sync_cmd_data.state = SYNC_DONE;
+                ipc_sync_cmd_data.data_size = 2;
+                ipc_sync_cmd_data.data.u32[0] = sd_get_block_size();
+                ipc_sync_cmd_data.data.u32[1] = sd_get_capacity();
+                /***************************************************
+                 * SDIO/USB block size synchronization
+                 **************************************************/
+                /* now that SDIO has returned, let's return to USB */
+                ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command_data), (char*)&ipc_sync_cmd_data);
+                if(ret != SYS_E_DONE){
+                    printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+                    goto error;
+                }
+                break;
+            }
 
-                case MAGIC_DATA_WR_DMA_REQ:
-                    {
+            case MAGIC_DATA_WR_DMA_REQ:
+            {
 #if CONFIG_WOOKEY
-                        led_on();
+                led_on();
 #endif
-                        dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
+                dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
 #if SDIO_DEBUG
-                        printf("!!!!!!!!!!! received DMA write command to SDIO: @:%x size: %d\n",
-                                dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
+                printf("!!!!!!!!!!! received DMA write command to SDIO: @:%x size: %d\n",
+                        dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
 
-                        printf("!!!!!!!!!! WRITE dumping SDIO buf @:%x size: %d\n", dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
+                printf("!!!!!!!!!! WRITE dumping SDIO buf @:%x size: %d\n", dataplane_command_wr.sector_address, dataplane_command_wr.num_sectors);
 #endif
-                        // write request.... let's write then...
-                        sd_ret = sd_write((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
+                // write request.... let's write then...
+                sd_ret = sd_write((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
 
-                        dataplane_command_ack.magic = MAGIC_DATA_WR_DMA_ACK;
-                        if(sd_error != SD_SUCCESS || sd_ret != SD_SUCCESS) {
-                            printf("sd_write() failure : R1 register %x status reg %x\n", saver1, savestatus);
-                            dataplane_command_ack.state = SYNC_FAILURE;
-                        } else {
-                            dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
-                        }
+                dataplane_command_ack.magic = MAGIC_DATA_WR_DMA_ACK;
+                if(sd_error != SD_SUCCESS || sd_ret != SD_SUCCESS) {
+                    printf("sd_write() failure : R1 register %x status reg %x\n", saver1, savestatus);
+                    dataplane_command_ack.state = SYNC_FAILURE;
+                } else {
+                    dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
+                }
 
 #if CONFIG_WOOKEY
-                        led_off();
+                led_off();
 #endif
-                        ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
-                        if(ret != SYS_E_DONE){
-                            goto err;
-                        }
-                        break;
-                    }
+                ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
+                if(ret != SYS_E_DONE){
+                    printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+                    goto error;
+                }
+                break;
+            }
 
-                case MAGIC_DATA_RD_DMA_REQ:
-                    {
+            case MAGIC_DATA_RD_DMA_REQ:
+            {
 #if CONFIG_WOOKEY
-                        led_on();
+                led_on();
 #endif
-                        dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
+                dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
 #if SDIO_DEBUG
-                        printf("received DMA read command to SDIO: @[sector] :%x @[bytes]: %x size: %d\n",
-                                dataplane_command_wr.sector_address,
-                                dataplane_command_wr.sector_address * 512,
-                                dataplane_command_wr.num_sectors);
+                printf("received DMA read command to SDIO: @[sector] :%x @[bytes]: %x size: %d\n",
+                        dataplane_command_wr.sector_address,
+                        dataplane_command_wr.sector_address * 512,
+                        dataplane_command_wr.num_sectors);
 #endif
-                        // read request.... let's read then...
+                // read request.... let's read then...
 
-                        sd_ret = sd_read((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
+                sd_ret = sd_read((uint32_t*)sdio_buf, dataplane_command_wr.sector_address, 512*dataplane_command_wr.num_sectors);
 
-                        dataplane_command_ack.magic = MAGIC_DATA_RD_DMA_ACK;
-                        if(sd_error != SD_SUCCESS || sd_ret != SD_SUCCESS) {
-                            printf("sd_read() failure : R1 register %x status reg %x\n", saver1, savestatus);
-                            dataplane_command_ack.state = SYNC_FAILURE;
-                        } else {
-                            dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
-                        }
+                dataplane_command_ack.magic = MAGIC_DATA_RD_DMA_ACK;
+                if(sd_error != SD_SUCCESS || sd_ret != SD_SUCCESS) {
+                    printf("sd_read() failure : R1 register %x status reg %x\n", saver1, savestatus);
+                    dataplane_command_ack.state = SYNC_FAILURE;
+                } else {
+                    dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
+                }
 
 #if CONFIG_WOOKEY
-                        led_off();
+                led_off();
 #endif
-                        ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
-                        if(ret != SYS_E_DONE){
-                            goto err;
-                        }
-                        break;
-                    }
+                ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct dataplane_command), (const char*)&dataplane_command_ack);
+                if(ret != SYS_E_DONE){
+                    printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+                    goto error;
+                }
+                break;
+            }
 
-                default:
-                    {
-                        printf("received invalid command from CRYPTO (magic: %d\n", ipc_mainloop_cmd.magic);
-                        ipc_mainloop_cmd.magic = MAGIC_INVALID;
-                        ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(t_ipc_command), (const char*)&ipc_mainloop_cmd);
-                        if(ret != SYS_E_DONE){
-                            goto err;
-                        }
-                        break;
-                    }
+            default:
+            {
+                printf("received invalid command from CRYPTO (magic: %d\n", ipc_mainloop_cmd.magic);
+                ipc_mainloop_cmd.magic = MAGIC_INVALID;
+                ret = sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(t_ipc_command), (const char*)&ipc_mainloop_cmd);
+                if(ret != SYS_E_DONE){
+                    printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+                    goto error;
+                }
+                break;
             }
         }
 
@@ -411,8 +441,8 @@ int _main(uint32_t task_id)
         }
     }
 
-err:
-    /* Should never be reached except in case of error!!! */    
+ error:
+    /* Should never be reached except in case of error!!! */
     return 1;
 }
 
