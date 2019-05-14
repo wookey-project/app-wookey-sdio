@@ -393,7 +393,7 @@ int _main(uint32_t task_id)
                                  512 * dataplane_command_wr.num_sectors);
 
                     dataplane_command_ack.magic = MAGIC_DATA_WR_DMA_ACK;
-                    if (sd_error != SD_SUCCESS || sd_ret != SD_SUCCESS) {
+                    if (sd_ret != SD_SUCCESS) {
                         printf
                             ("sd_write() failure : R1 register %x status reg %x\n",
                              saver1, savestatus);
@@ -438,7 +438,7 @@ int _main(uint32_t task_id)
                                 512 * dataplane_command_wr.num_sectors);
 
                     dataplane_command_ack.magic = MAGIC_DATA_RD_DMA_ACK;
-                    if (sd_error != SD_SUCCESS || sd_ret != SD_SUCCESS) {
+                    if ( sd_ret != SD_SUCCESS) {
                         printf
                             ("sd_read() failure : R1 register %x status reg %x\n",
                              saver1, savestatus);
