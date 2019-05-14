@@ -56,7 +56,7 @@ void SDIO_asks_reset(uint8_t id_crypto)
 {
     struct sync_command ipc_sync_cmd;
 
-    ipc_sync_cmd.magic = 0x86;  //MAGIC_STORAGE_EJECTED;
+    ipc_sync_cmd.magic = MAGIC_STORAGE_EJECTED;
     ipc_sync_cmd.state = SYNC_WAIT;
 
     sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command),
@@ -311,6 +311,19 @@ int _main(uint32_t task_id)
             sys_sleep(SLEEP_MODE_INTERRUPTIBLE,50);
             continue;
         }
+
+        /*
+         *  The Card is not present in the connector
+         *  We indicate this to crypto that will forward the information
+         *  to afferent apps
+         */
+        if (SD_ejection_occured) {
+            printf("Ejection detected reset requested\n");
+            SDIO_asks_reset(id_crypto);
+            while(1); 
+            /* DO NOT GO ANY FURTHER wait actively for the reset */
+        }
+
 #if 0
         if ((ret != SYS_E_DONE) && (!SD_ejection_occured)) {
             continue;
@@ -477,16 +490,6 @@ int _main(uint32_t task_id)
                     }
                     break;
                 }
-        }
-
-        /*
-         *  The Card is not present in the connector
-         *  We indicate this to crypto that will forward the information
-         *  to afferent apps
-         */
-        if (SD_ejection_occured) {
-            printf("Ejection detected reset requested\n");
-            SDIO_asks_reset(id_crypto);
         }
 
     }
