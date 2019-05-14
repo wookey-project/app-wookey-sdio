@@ -305,11 +305,11 @@ int _main(uint32_t task_id)
         uint8_t sd_ret;
         logsize_t size = sizeof(t_ipc_command);
 
-        ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char *) &ipc_mainloop_cmd);
+        ret = sys_ipc(IPC_RECV_ASYNC, &id, &size, (char *) &ipc_mainloop_cmd);
 
-        if (ret != SYS_E_DONE) {
-            printf("Oops! %s:%d\n", __func__, __LINE__);
-            goto error;
+        if ((ret != SYS_E_DONE) && (!SD_ejection_occured)) {
+            sys_sleep(SLEEP_MODE_INTERRUPTIBLE,50);
+            continue;
         }
 #if 0
         if ((ret != SYS_E_DONE) && (!SD_ejection_occured)) {
@@ -485,8 +485,10 @@ int _main(uint32_t task_id)
          *  to afferent apps
          */
         if (SD_ejection_occured) {
+            printf("Ejection detected reset requested\n");
             SDIO_asks_reset(id_crypto);
         }
+
     }
 
  error:
