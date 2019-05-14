@@ -36,7 +36,7 @@ extern volatile uint8_t SD_ejection_occured;
 
 static inline void led_on(void)
 {
-    /* toggle led ON */
+    /* Toggle led ON */
     sys_cfg(CFG_GPIO_SET,
             (uint8_t) ((led1_dev_infos.gpios[LED1].port << 4) +
                        led1_dev_infos.gpios[LED1].pin), 1);
@@ -45,7 +45,7 @@ static inline void led_on(void)
 
 static inline void led_off(void)
 {
-    /* toggle led OFF */
+    /* Toggle led OFF */
     sys_cfg(CFG_GPIO_SET,
             (uint8_t) ((led1_dev_infos.gpios[LED1].port << 4) +
                        led1_dev_infos.gpios[LED1].pin), 0);
@@ -94,18 +94,19 @@ int _main(uint32_t task_id)
     /*********************************************
      * Declaring DMA Shared Memory with Crypto
      *********************************************/
+
+    /* Crypto DMA will read from this buffer */
     dmashm_rd.target = id_crypto;
     dmashm_rd.source = task_id;
     dmashm_rd.address = (physaddr_t) sdio_buf;
     dmashm_rd.size = SDIO_BUF_SIZE;
-    /* Crypto DMA will read from this buffer */
     dmashm_rd.mode = DMA_SHM_ACCESS_RD;
 
+    /* Crypto DMA will write into this buffer */
     dmashm_wr.target = id_crypto;
     dmashm_wr.source = task_id;
     dmashm_wr.address = (physaddr_t) sdio_buf;
     dmashm_wr.size = SDIO_BUF_SIZE;
-    /* Crypto DMA will write into this buffer */
     dmashm_wr.mode = DMA_SHM_ACCESS_WR;
 
     printf("Declaring DMA_SHM for SDIO read flow\n");
@@ -128,6 +129,7 @@ int _main(uint32_t task_id)
     /*********************************************
      * Declaring SDIO read/write access LED
      ********************************************/
+
     printf("Declaring SDIO LED device\n");
     device_t dev;
 
@@ -162,8 +164,9 @@ int _main(uint32_t task_id)
 #endif
 
     /*******************************************
-     * let's syncrhonize with other tasks
+     * Let's syncrhonize with other tasks
      *******************************************/
+
     logsize_t size = sizeof(struct sync_command);
 
     printf("sending end_of_init synchronization to crypto\n");
@@ -210,7 +213,7 @@ int _main(uint32_t task_id)
         printf("crypto module is ready\n");
     }
 
-    /* init phase of drivers/libs */
+    /* Init phase of drivers/libs */
     if (SD_ejection_occured) {
         SDIO_asks_reset(id_crypto);
     }
@@ -308,7 +311,7 @@ int _main(uint32_t task_id)
         ret = sys_ipc(IPC_RECV_ASYNC, &id, &size, (char *) &ipc_mainloop_cmd);
 
         if ((ret != SYS_E_DONE) && (!SD_ejection_occured)) {
-            sys_sleep(SLEEP_MODE_INTERRUPTIBLE,50);
+            sys_sleep(SLEEP_MODE_INTERRUPTIBLE, 50);
             continue;
         }
 
@@ -320,10 +323,9 @@ int _main(uint32_t task_id)
         if (SD_ejection_occured) {
             printf("Ejection detected reset requested\n");
             SDIO_asks_reset(id_crypto);
-            while(1); 
+            while (1) ;
             /* DO NOT GO ANY FURTHER wait actively for the reset */
         }
-
 #if 0
         if ((ret != SYS_E_DONE) && (!SD_ejection_occured)) {
             continue;
@@ -333,168 +335,138 @@ int _main(uint32_t task_id)
         switch (ipc_mainloop_cmd.magic) {
 
             case MAGIC_STORAGE_SCSI_BLOCK_SIZE_CMD:
-                {
-                    ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
-                    ipc_sync_cmd_data.magic =
-                        MAGIC_STORAGE_SCSI_BLOCK_SIZE_RESP;
-                    ipc_sync_cmd_data.state = SYNC_DONE;
-                    ipc_sync_cmd_data.data_size = 1;
-                    ipc_sync_cmd_data.data.u32[0] = sd_get_block_size();
-                /***************************************************
-                 * SDIO/USB block size synchronization
-                 **************************************************/
-                    /* now that SDIO has returned, let's return to USB */
-                    ret =
-                        sys_ipc(IPC_SEND_SYNC, id_crypto,
-                                sizeof(struct sync_command_data),
-                                (char *) &ipc_sync_cmd_data);
-                    if (ret != SYS_E_DONE) {
-                        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__,
-                               ret);
-                        goto error;
-                    }
-                    break;
+                /* SDIO/USB block size synchronization */
+                ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
+                ipc_sync_cmd_data.magic = MAGIC_STORAGE_SCSI_BLOCK_SIZE_RESP;
+                ipc_sync_cmd_data.state = SYNC_DONE;
+                ipc_sync_cmd_data.data_size = 1;
+                ipc_sync_cmd_data.data.u32[0] = sd_get_block_size();
+                ret =
+                    sys_ipc(IPC_SEND_SYNC, id_crypto,
+                            sizeof(struct sync_command_data),
+                            (char *) &ipc_sync_cmd_data);
+                if (ret != SYS_E_DONE) {
+                    printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+                    goto error;
                 }
+                break;
 
             case MAGIC_STORAGE_SCSI_BLOCK_NUM_CMD:
-                {
-                /***************************************************
-                 * SDIO/USB block number synchronization
-                 **************************************************/
-                    ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
-                    ipc_sync_cmd_data.magic = MAGIC_STORAGE_SCSI_BLOCK_NUM_RESP;
-                    ipc_sync_cmd_data.state = SYNC_DONE;
-                    ipc_sync_cmd_data.data_size = 2;
-                    ipc_sync_cmd_data.data.u32[0] = sd_get_block_size();
-                    ipc_sync_cmd_data.data.u32[1] = sd_get_capacity();
-                /***************************************************
-                 * SDIO/USB block size synchronization
-                 **************************************************/
-                    /* now that SDIO has returned, let's return to USB */
-                    ret =
-                        sys_ipc(IPC_SEND_SYNC, id_crypto,
-                                sizeof(struct sync_command_data),
-                                (char *) &ipc_sync_cmd_data);
-                    if (ret != SYS_E_DONE) {
-                        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__,
-                               ret);
-                        goto error;
-                    }
-                    break;
+                /* SDIO/USB block number synchronization */
+                ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
+                ipc_sync_cmd_data.magic = MAGIC_STORAGE_SCSI_BLOCK_NUM_RESP;
+                ipc_sync_cmd_data.state = SYNC_DONE;
+                ipc_sync_cmd_data.data_size = 2;
+                ipc_sync_cmd_data.data.u32[0] = sd_get_block_size();
+                ipc_sync_cmd_data.data.u32[1] = sd_get_capacity();
+                ret =
+                    sys_ipc(IPC_SEND_SYNC, id_crypto,
+                            sizeof(struct sync_command_data),
+                            (char *) &ipc_sync_cmd_data);
+                if (ret != SYS_E_DONE) {
+                    printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+                    goto error;
                 }
+                break;
 
             case MAGIC_DATA_WR_DMA_REQ:
-                {
 #if CONFIG_WOOKEY
-                    led_on();
+                led_on();
 #endif
-                    dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
+                dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
 #if SDIO_DEBUG
+                printf
+                    ("Received DMA write command to SDIO: @:%x size: %d\n",
+                     dataplane_command_wr.sector_address,
+                     dataplane_command_wr.num_sectors);
+#endif
+                /* Write request.... let's write then... */
+                sd_ret =
+                    sd_write((uint32_t *) sdio_buf,
+                             dataplane_command_wr.sector_address,
+                             512 * dataplane_command_wr.num_sectors);
+
+                if (sd_ret != SD_SUCCESS) {
                     printf
-                        ("!!!!!!!!!!! received DMA write command to SDIO: @:%x size: %d\n",
-                         dataplane_command_wr.sector_address,
-                         dataplane_command_wr.num_sectors);
-
-                    printf("!!!!!!!!!! WRITE dumping SDIO buf @:%x size: %d\n",
-                           dataplane_command_wr.sector_address,
-                           dataplane_command_wr.num_sectors);
-#endif
-                    // write request.... let's write then...
-                    sd_ret =
-                        sd_write((uint32_t *) sdio_buf,
-                                 dataplane_command_wr.sector_address,
-                                 512 * dataplane_command_wr.num_sectors);
-
+                        ("sd_write() failure : R1 register %x status reg %x\n",
+                         saver1, savestatus);
+                    dataplane_command_ack.state = SYNC_FAILURE;
                     dataplane_command_ack.magic = MAGIC_DATA_WR_DMA_ACK;
-                    if (sd_ret != SD_SUCCESS) {
-                        printf
-                            ("sd_write() failure : R1 register %x status reg %x\n",
-                             saver1, savestatus);
-                        dataplane_command_ack.state = SYNC_FAILURE;
-                    } else {
-                        dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
-                    }
-
-#if CONFIG_WOOKEY
-                    led_off();
-#endif
-                    ret =
-                        sys_ipc(IPC_SEND_SYNC, id_crypto,
-                                sizeof(struct dataplane_command),
-                                (const char *) &dataplane_command_ack);
-                    if (ret != SYS_E_DONE) {
-                        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__,
-                               ret);
-                        goto error;
-                    }
-                    break;
+                } else {
+                    dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
+                    dataplane_command_ack.magic = MAGIC_DATA_WR_DMA_ACK;
                 }
+#if CONFIG_WOOKEY
+                led_off();
+#endif
+                ret =
+                    sys_ipc(IPC_SEND_SYNC, id_crypto,
+                            sizeof(struct dataplane_command),
+                            (const char *) &dataplane_command_ack);
+                if (ret != SYS_E_DONE) {
+                    printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+                    goto error;
+                }
+                break;
 
             case MAGIC_DATA_RD_DMA_REQ:
-                {
 #if CONFIG_WOOKEY
-                    led_on();
+                led_on();
 #endif
-                    dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
+                dataplane_command_wr = ipc_mainloop_cmd.dataplane_cmd;
 #if SDIO_DEBUG
-                    printf
-                        ("received DMA read command to SDIO: @[sector] :%x @[bytes]: %x size: %d\n",
-                         dataplane_command_wr.sector_address,
-                         dataplane_command_wr.sector_address * 512,
-                         dataplane_command_wr.num_sectors);
+                printf
+                    ("received DMA read command to SDIO: @[sector] :%x @[bytes]: %x size: %d\n",
+                     dataplane_command_wr.sector_address,
+                     dataplane_command_wr.sector_address * 512,
+                     dataplane_command_wr.num_sectors);
 #endif
-                    // read request.... let's read then...
+                /* Read request.... let's read then... */
+                sd_ret =
+                    sd_read((uint32_t *) sdio_buf,
+                            dataplane_command_wr.sector_address,
+                            512 * dataplane_command_wr.num_sectors);
 
-                    sd_ret =
-                        sd_read((uint32_t *) sdio_buf,
-                                dataplane_command_wr.sector_address,
-                                512 * dataplane_command_wr.num_sectors);
-
+                if (sd_ret != SD_SUCCESS) {
+                    printf
+                        ("sd_read() failure : R1 register %x status reg %x\n",
+                         saver1, savestatus);
+                    dataplane_command_ack.state = SYNC_FAILURE;
                     dataplane_command_ack.magic = MAGIC_DATA_RD_DMA_ACK;
-                    if ( sd_ret != SD_SUCCESS) {
-                        printf
-                            ("sd_read() failure : R1 register %x status reg %x\n",
-                             saver1, savestatus);
-                        dataplane_command_ack.state = SYNC_FAILURE;
-                    } else {
-                        dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
-                    }
+                } else {
+                    dataplane_command_ack.state = SYNC_ACKNOWLEDGE;
+                    dataplane_command_ack.magic = MAGIC_DATA_RD_DMA_ACK;
+                }
 
 #if CONFIG_WOOKEY
-                    led_off();
+                led_off();
 #endif
-                    ret =
-                        sys_ipc(IPC_SEND_SYNC, id_crypto,
-                                sizeof(struct dataplane_command),
-                                (const char *) &dataplane_command_ack);
-                    if (ret != SYS_E_DONE) {
-                        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__,
-                               ret);
-                        goto error;
-                    }
-                    break;
+                ret =
+                    sys_ipc(IPC_SEND_SYNC, id_crypto,
+                            sizeof(struct dataplane_command),
+                            (const char *) &dataplane_command_ack);
+                if (ret != SYS_E_DONE) {
+                    printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+                    goto error;
                 }
+                break;
 
             default:
-                {
-                    printf("received invalid command from CRYPTO (magic: %d\n",
-                           ipc_mainloop_cmd.magic);
-                    ipc_mainloop_cmd.magic = MAGIC_INVALID;
-                    ret =
-                        sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(t_ipc_command),
-                                (const char *) &ipc_mainloop_cmd);
-                    if (ret != SYS_E_DONE) {
-                        printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__,
-                               ret);
-                        goto error;
-                    }
-                    break;
+                printf("received invalid command from CRYPTO (magic: %d\n",
+                       ipc_mainloop_cmd.magic);
+                ipc_mainloop_cmd.magic = MAGIC_INVALID;
+                ret =
+                    sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(t_ipc_command),
+                            (const char *) &ipc_mainloop_cmd);
+                if (ret != SYS_E_DONE) {
+                    printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+                    goto error;
                 }
+                break;
         }
 
     }
 
  error:
-    /* Should never be reached except in case of error!!! */
     return 1;
 }
