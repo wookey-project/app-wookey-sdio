@@ -177,8 +177,11 @@ config APP_SDIO_PERM_MEM_DYNAMIC_MAP
 
 endmenu
 
-
-
 endmenu
+
+config APP_SDIO_DOMAIN
+    depends on APP_SDIO
+    int "SDIO app security domain"
+    default 0
 
 endmenu
