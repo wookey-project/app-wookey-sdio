@@ -10,6 +10,8 @@ config APP_SDIO
   ---help---
     Say y if you want to embbed SDIO custom application.
 
+if APP_SDIO
+
 config APP_SDIO_FW
   bool "Sdio App for firmware mode"
   depends on APP_SDIO
@@ -183,5 +185,7 @@ config APP_SDIO_DOMAIN
     depends on APP_SDIO
     int "SDIO app security domain"
     default 0
+
+endif
 
 endmenu
