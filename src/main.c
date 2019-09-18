@@ -85,7 +85,9 @@ int _main(uint32_t task_id)
 
     ret = sys_init(INIT_GETTASKID, "crypto", &id_crypto);
     if (ret != SYS_E_DONE) {
+#if SDIO_DEBUG
         printf("Oops! %s:%d\n", __func__, __LINE__);
+#endif
         goto error;
     }
 
@@ -112,7 +114,9 @@ int _main(uint32_t task_id)
     printf("Declaring DMA_SHM for SDIO read flow\n");
     ret = sys_init(INIT_DMA_SHM, &dmashm_rd);
     if (ret != SYS_E_DONE) {
+#if SDIO_DEBUG
         printf("Oops! %s:%d\n", __func__, __LINE__);
+#endif
         goto error;
     }
     printf("sys_init returns %s !\n", strerror(ret));
@@ -120,7 +124,9 @@ int _main(uint32_t task_id)
     printf("Declaring DMA_SHM for SDIO write flow\n");
     ret = sys_init(INIT_DMA_SHM, &dmashm_wr);
     if (ret != SYS_E_DONE) {
+#if SDIO_DEBUG
         printf("Oops! %s:%d\n", __func__, __LINE__);
+#endif
         goto error;
     }
     printf("sys_init returns %s !\n", strerror(ret));
@@ -184,7 +190,9 @@ int _main(uint32_t task_id)
 
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char *) &ipc_sync_cmd);
     if (ret != SYS_E_DONE) {
+#if SDIO_DEBUG
         printf("Oops! %s:%d\n", __func__, __LINE__);
+#endif
         goto error;
     }
 
@@ -204,7 +212,9 @@ int _main(uint32_t task_id)
 
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char *) &ipc_sync_cmd);
     if (ret != SYS_E_DONE) {
+#if SDIO_DEBUG
         printf("Oops! %s:%d\n", __func__, __LINE__);
+#endif
         goto error;
     }
 
@@ -239,7 +249,9 @@ int _main(uint32_t task_id)
     /* Waiting for crypto acknowledge */
     ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char *) &ipc_sync_cmd);
     if (ret != SYS_E_DONE) {
+#if SDIO_DEBUG
         printf("Oops! %s:%d\n", __func__, __LINE__);
+#endif
         goto error;
     }
 
@@ -334,22 +346,41 @@ int _main(uint32_t task_id)
 
         switch (ipc_mainloop_cmd.magic) {
 
-            case MAGIC_STORAGE_SCSI_BLOCK_SIZE_CMD:
+            case MAGIC_STORAGE_SCSI_BLOCK_SIZE_CMD: {
+                uint32_t *cid_p = NULL;
+                uint32_t cid_len = 0;
+
                 /* SDIO/USB block size synchronization */
                 ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
                 ipc_sync_cmd_data.magic = MAGIC_STORAGE_SCSI_BLOCK_SIZE_RESP;
                 ipc_sync_cmd_data.state = SYNC_DONE;
-                ipc_sync_cmd_data.data_size = 1;
+                ipc_sync_cmd_data.data_size = 6;
                 ipc_sync_cmd_data.data.u32[0] = sd_get_block_size();
+                ipc_sync_cmd_data.data.u32[1] = sd_get_capacity();
+
+                if (sd_get_cid(&cid_p, &cid_len) != 0) {
+                    goto error;
+                }
+#if SDIO_DEBUG
+                printf("get back CID %x %x %x %x from libSD\n", cid_p[0], cid_p[1], cid_p[2], cid_p[3]);
+#endif
+                /* SDCard CID is 128 bit len (SDCard standard, which means
+                 * 4 uint32_t */
+                for (uint8_t i = 0; i < 4; ++i) {
+                   ipc_sync_cmd_data.data.u32[i + 2] = cid_p[i];
+                }
                 ret =
                     sys_ipc(IPC_SEND_SYNC, id_crypto,
                             sizeof(struct sync_command_data),
                             (char *) &ipc_sync_cmd_data);
                 if (ret != SYS_E_DONE) {
+#if SDIO_DEBUG
                     printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+#endif
                     goto error;
                 }
                 break;
+            }
 
             case MAGIC_STORAGE_SCSI_BLOCK_NUM_CMD:
                 /* SDIO/USB block number synchronization */
@@ -364,7 +395,9 @@ int _main(uint32_t task_id)
                             sizeof(struct sync_command_data),
                             (char *) &ipc_sync_cmd_data);
                 if (ret != SYS_E_DONE) {
+#if SDIO_DEBUG
                     printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+#endif
                     goto error;
                 }
                 break;
@@ -404,7 +437,9 @@ int _main(uint32_t task_id)
                             sizeof(struct dataplane_command),
                             (const char *) &dataplane_command_ack);
                 if (ret != SYS_E_DONE) {
+#if SDIO_DEBUG
                     printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+#endif
                     goto error;
                 }
                 break;
@@ -446,7 +481,9 @@ int _main(uint32_t task_id)
                             sizeof(struct dataplane_command),
                             (const char *) &dataplane_command_ack);
                 if (ret != SYS_E_DONE) {
+#if SDIO_DEBUG
                     printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+#endif
                     goto error;
                 }
                 break;
@@ -459,7 +496,9 @@ int _main(uint32_t task_id)
                     sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(t_ipc_command),
                             (const char *) &ipc_mainloop_cmd);
                 if (ret != SYS_E_DONE) {
+#if SDIO_DEBUG
                     printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+#endif
                     goto error;
                 }
                 break;
@@ -468,5 +507,6 @@ int _main(uint32_t task_id)
     }
 
  error:
+    printf("Error! critical SDIO error, leaving!\n");
     return 1;
 }
