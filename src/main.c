@@ -303,6 +303,25 @@ int _main(uint32_t task_id)
      *******************************************/
 
     printf("SDIO main loop starting\n");
+/* 
+  This is only to see if an empty password unlocks 
+  the card and update the R1 register with relevant values
+*/
+    sd_unlock_card((uint8_t*)"dummy",0);
+    /* Check card status and perform unlocking */
+    if(sd_is_locked())
+      {
+        sd_unlock_card((uint8_t*)"tamere",6);
+      }
+    else {
+          printf("card has no password set!\n");
+          sd_set_password((uint8_t*)"tamere",0,(uint8_t*)"tamere",6);
+          sd_unlock_card((uint8_t*)"tamere",6);
+          
+    }
+    sd_set_bus_width_sync(4);
+    sd_set_block_len(512);
+    
 
     /*
      * Main waiting loopt. The task main thread is awoken by any external
@@ -400,6 +419,28 @@ int _main(uint32_t task_id)
 #endif
                     goto error;
                 }
+                break;
+            case MAGIC_STORAGE_PASSWD:
+                sd_unlock_card((uint8_t*)"dummy",0);
+                /* Check card status and perform unlocking */
+                if(sd_is_locked())
+                {
+                  sd_unlock_card((uint8_t*)(ipc_main_loop.data.u8+4),ipc_main_loop.data.u32[0]);
+                }
+                else {
+                  printf("card has no password set!\n");
+                  sd_set_password((uint8_t*)"dummy",0,(uint8_t*)(ipc_main_loop.data.u8+4),ipc_main_loop.data.u32[0]);
+                  sd_unlock_card((uint8_t*)(ipc_main_loop.data.u8+4),ipc_main_loop.data.u32[0]);
+                }
+                memset(ipc_main_loop.data.u8+4,0,ipc_main_loop.data.u32[0]);
+#if CONFIG_WOOKEY
+                sd_set_bus_width_sync(4);/* wookey has only a 4 wire bus */
+#endif
+                sd_set_block_len(512);
+                      /* 
+                          512 is the mandatory value 
+                          for the >=SDHC cards and is supported by all the card
+                      */
                 break;
 
             case MAGIC_DATA_WR_DMA_REQ:
