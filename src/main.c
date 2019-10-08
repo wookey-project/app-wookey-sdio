@@ -301,28 +301,64 @@ int _main(uint32_t task_id)
      *   SDIO is waiting for READ/WRITE command
      *   from IPC interface
      *******************************************/
+    /*
+       512 nytes is the mandatory blocksize for SD card >= HC
+       it is also mandatorily support by the other cards so it can be hardcoded
+    */
+    sd_set_block_len(512);
 
-    printf("SDIO main loop starting\n");
+#if 0
 /* 
   This is only to see if an empty password unlocks 
   the card and update the R1 register with relevant values
 */
+    ipc_sync_cmd_data.magic = MAGIC_STORAGE_PASSWD;
+    ipc_sync_cmd_data.state = SYNC_READY;
+    ipc_sync_cmd_data.data_size = 0;
+
+    printf("Requesting crypto for the unlocking passwd...\n");
+    ret =
+        sys_ipc(IPC_SEND_SYNC, id_crypto, sizeof(struct sync_command_data),
+                (char *) &ipc_sync_cmd_data);
+    if (ret != SYS_E_DONE) {
+        printf("sys_ipc(IPC_SEND_SYNC, id_crypto) failed! Exiting...\n");
+        goto error;
+    }
+
+    ret = sys_ipc(IPC_RECV_SYNC, &id, &size, (char *) &ipc_sync_cmd);
+    if (ret != SYS_E_DONE) {
+        printf("sys_ipc(IPC_RECV_SYNC) failed! Exiting...\n");
+        goto error;
+    }
+    if ((ipc_sync_cmd.magic == MAGIC_STORAGE_PASSWD_RESP)
+        && (ipc_sync_cmd.state == SYNC_ACKNOWLEDGE)) {
+        printf("crypto has provided us the PASS, continuing\n");
+    } else {
+        printf("Error ! IPC desynchro !\n");
+        goto error;
+    }
+    if(ipc_sync_cmd.data.u32[0]>16) {
+        printf("Wrong unlocking data\n");
+        goto error;
+    }
+    
     sd_unlock_card((uint8_t*)"dummy",0);
     /* Check card status and perform unlocking */
     if(sd_is_locked())
       {
-        sd_unlock_card((uint8_t*)"tamere",6);
+        sd_unlock_card((uint8_t*)(ipc_sync_cmd.data.u8+4),ipc_sync_cmd.data.u32[0]);
       }
     else {
           printf("card has no password set!\n");
-          sd_set_password((uint8_t*)"tamere",0,(uint8_t*)"tamere",6);
-          sd_unlock_card((uint8_t*)"tamere",6);
+          sd_set_password((uint8_t*)"dummy",0,(uint8_t*)(ipc_sync_cmd.data.u8+4),ipc_sync_cmd.data.u32[0]);
+          sd_unlock_card((uint8_t*)(ipc_sync_cmd.data.u8+4),ipc_sync_cmd.data.u32[0]);
           
     }
     sd_set_bus_width_sync(4);
-    sd_set_block_len(512);
     
+#endif
 
+    printf("SDIO main loop starting\n");
     /*
      * Main waiting loopt. The task main thread is awoken by any external
      * event such as ISR or IPC.
@@ -421,28 +457,39 @@ int _main(uint32_t task_id)
                 }
                 break;
             case MAGIC_STORAGE_PASSWD:
+                    if(ipc_sync_cmd.data.u32[0]>16) { 
+                        printf("Wrong unlocking data\n");
+                         goto error;
+                    }
                 sd_unlock_card((uint8_t*)"dummy",0);
                 /* Check card status and perform unlocking */
                 if(sd_is_locked())
                 {
-                  sd_unlock_card((uint8_t*)(ipc_main_loop.data.u8+4),ipc_main_loop.data.u32[0]);
+                  sd_unlock_card((uint8_t*)(ipc_sync_cmd.data.u8+4),ipc_sync_cmd.data.u32[0]);
                 }
                 else {
                   printf("card has no password set!\n");
-                  sd_set_password((uint8_t*)"dummy",0,(uint8_t*)(ipc_main_loop.data.u8+4),ipc_main_loop.data.u32[0]);
-                  sd_unlock_card((uint8_t*)(ipc_main_loop.data.u8+4),ipc_main_loop.data.u32[0]);
-                }
-                memset(ipc_main_loop.data.u8+4,0,ipc_main_loop.data.u32[0]);
-#if CONFIG_WOOKEY
-                sd_set_bus_width_sync(4);/* wookey has only a 4 wire bus */
-#endif
-                sd_set_block_len(512);
-                      /* 
-                          512 is the mandatory value 
-                          for the >=SDHC cards and is supported by all the card
-                      */
-                break;
+                  sd_set_password((uint8_t*)"dummy",0,(uint8_t*)(ipc_sync_cmd.data.u8+4),ipc_sync_cmd.data.u32[0]);
+                  sd_unlock_card((uint8_t*)(ipc_sync_cmd.data.u8+4),ipc_sync_cmd.data.u32[0]);
 
+                }
+                sd_set_bus_width_sync(4);
+                
+                ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
+                ipc_sync_cmd_data.magic = MAGIC_STORAGE_PASSWD_RESP;
+                ipc_sync_cmd_data.state = SYNC_DONE;
+                ipc_sync_cmd_data.data_size = 0;
+                ret =
+                    sys_ipc(IPC_SEND_SYNC, id_crypto,
+                            sizeof(struct sync_command_data),
+                            (char *) &ipc_sync_cmd_data);
+                if (ret != SYS_E_DONE) {
+#if SDIO_DEBUG
+                    printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+#endif
+                    goto error;
+                }
+                break;
             case MAGIC_DATA_WR_DMA_REQ:
 #if CONFIG_WOOKEY
                 led_on();
