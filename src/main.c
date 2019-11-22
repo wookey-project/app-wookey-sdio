@@ -24,7 +24,7 @@
  * without compiler complain. argc/argv is not a goot idea in term
  * of size and calculation in a microcontroler
  */
-#define SDIO_DEBUG 0
+#define SDIO_DEBUG 1
 #define SDIO_BUF_SIZE 16384
 
 /* NOTE: alignment due to DMA */
@@ -424,6 +424,8 @@ int _main(uint32_t task_id)
                 for (uint8_t i = 0; i < 4; ++i) {
                    ipc_sync_cmd_data.data.u32[i + 2] = cid_p[i];
                 }
+                printf("ICI %d\n",__LINE__);
+                
                 ret =
                     sys_ipc(IPC_SEND_SYNC, id_crypto,
                             sizeof(struct sync_command_data),
@@ -438,6 +440,7 @@ int _main(uint32_t task_id)
             }
 
             case MAGIC_STORAGE_SCSI_BLOCK_NUM_CMD:
+              
                 /* SDIO/USB block number synchronization */
                 ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
                 ipc_sync_cmd_data.magic = MAGIC_STORAGE_SCSI_BLOCK_NUM_RESP;
@@ -457,21 +460,29 @@ int _main(uint32_t task_id)
                 }
                 break;
             case MAGIC_STORAGE_PASSWD:
-                    if(ipc_sync_cmd.data.u32[0]>16) { 
-                        printf("Wrong unlocking data\n");
+                    ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
+                    if(ipc_sync_cmd_data.data.u32[0]>16) { 
+                        printf("Wrong unlocking data %d\n",ipc_sync_cmd_data.data.u32[0]);
+                        printf("passwd recu par SDIO  : \n");
+                        for(unsigned int i=0;i<ipc_sync_cmd_data.data.u32[0];i++)
+                            printf("%x (%c)\n",ipc_sync_cmd_data.data.u8[4+i],
+                                                ipc_sync_cmd_data.data.u8[4+i]);
+                        printf("\n");
                          goto error;
                     }
-                sd_unlock_card((uint8_t*)"dummy",0);
+              sd_unlock_card((uint8_t*)"dummy",0);
                 /* Check card status and perform unlocking */
-                if(sd_is_locked())
-                {
-                  sd_unlock_card((uint8_t*)(ipc_sync_cmd.data.u8+4),ipc_sync_cmd.data.u32[0]);
+                if(sd_is_locked()) {
+                  printf("unlocking card\n");
+                  //sd_clear_password((uint8_t*)(ipc_sync_cmd_data.data.u8+4),ipc_sync_cmd_data.data.u32[0]);
+                  sd_unlock_card((uint8_t*)(ipc_sync_cmd_data.data.u8+4),ipc_sync_cmd_data.data.u32[0]);
                 }
                 else {
-                  printf("card has no password set!\n");
-                  sd_set_password((uint8_t*)"dummy",0,(uint8_t*)(ipc_sync_cmd.data.u8+4),ipc_sync_cmd.data.u32[0]);
-                  sd_unlock_card((uint8_t*)(ipc_sync_cmd.data.u8+4),ipc_sync_cmd.data.u32[0]);
-
+                  printf("card already unlocked!\n");
+#if 0
+                  sd_set_password((uint8_t*)"dummy",0,(uint8_t*)(ipc_sync_cmd_data.data.u8+4),ipc_sync_cmd_data.data.u32[0]);
+                  sd_unlock_card((uint8_t*)(ipc_sync_cmd_data.data.u8+4),ipc_sync_cmd_data.data.u32[0]);
+#endif
                 }
                 sd_set_bus_width_sync(4);
                 
