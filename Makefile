@@ -41,6 +41,10 @@ LDFLAGS += $(EXTRA_LDFLAGS) -L$(APP_BUILD_DIR)
 # project's library you whish to use...
 LD_LIBS += -lstd -lsd -lsdio
 
+ifeq (y,$(CONFIG_STD_DRBG))
+LD_LIBS += -lhmac -lsign
+endif
+
 ###################################################################
 # okay let's list our source files and generated files now
 ###################################################################
