@@ -309,8 +309,8 @@ int _main(uint32_t task_id)
     sd_set_block_len(512);
 
 #if 0
-/* 
-  This is only to see if an empty password unlocks 
+/*
+  This is only to see if an empty password unlocks
   the card and update the R1 register with relevant values
 */
     ipc_sync_cmd_data.magic = MAGIC_STORAGE_PASSWD;
@@ -342,7 +342,7 @@ int _main(uint32_t task_id)
         printf("Wrong unlocking data\n");
         goto error;
     }
-    
+
     sd_unlock_card((uint8_t*)"dummy",0);
     /* Check card status and perform unlocking */
     if(sd_is_locked())
@@ -353,10 +353,10 @@ int _main(uint32_t task_id)
           printf("card has no password set!\n");
           sd_set_password((uint8_t*)"dummy",0,(uint8_t*)(ipc_sync_cmd.data.u8+4),ipc_sync_cmd.data.u32[0]);
           sd_unlock_card((uint8_t*)(ipc_sync_cmd.data.u8+4),ipc_sync_cmd.data.u32[0]);
-          
+
     }
     sd_set_bus_width_sync(4);
-    
+
 #endif
 
     printf("SDIO main loop starting\n");
@@ -425,7 +425,7 @@ int _main(uint32_t task_id)
                 for (uint8_t i = 0; i < 4; ++i) {
                    ipc_sync_cmd_data.data.u32[i + 2] = cid_p[i];
                 }
-                
+
                 ret =
                     sys_ipc(IPC_SEND_SYNC, id_crypto,
                             sizeof(struct sync_command_data),
@@ -440,7 +440,7 @@ int _main(uint32_t task_id)
             }
 
             case MAGIC_STORAGE_SCSI_BLOCK_NUM_CMD:
-              
+
                 /* SDIO/USB block number synchronization */
                 ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
                 ipc_sync_cmd_data.magic = MAGIC_STORAGE_SCSI_BLOCK_NUM_RESP;
@@ -461,15 +461,12 @@ int _main(uint32_t task_id)
                 break;
             case MAGIC_STORAGE_PASSWD:
                     ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
-                    if(ipc_sync_cmd_data.data.u32[0]>16) { 
+                    if(ipc_sync_cmd_data.data.u32[0]>16) {
                         printf("Wrong unlocking data %d\n",ipc_sync_cmd_data.data.u32[0]);
-#if 0
+#if SDIO_DEBUG
                         printf("passwd recu par SDIO  : \n");
-                        for(unsigned int i=0;i<ipc_sync_cmd_data.data.u32[0];i++)
-                            printf("%x (%c)\n",ipc_sync_cmd_data.data.u8[4+i],
-                                                ipc_sync_cmd_data.data.u8[4+i]);
-                        printf("\n");
-#endif     
+                        hexdump(&(ipc_sync_cmd_data.data.u8[4]),ipc_sync_cmd_data.data.u32[0]);
+#endif
                     goto error;
                     }
               if(!sdio_once) {
@@ -489,7 +486,7 @@ int _main(uint32_t task_id)
 #endif
                 }
                 sd_set_bus_width_sync(4);
-               } 
+               }
                 ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
                 ipc_sync_cmd_data.magic = MAGIC_STORAGE_PASSWD_RESP;
                 ipc_sync_cmd_data.state = SYNC_DONE;
