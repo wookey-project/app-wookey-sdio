@@ -33,6 +33,7 @@ __attribute__ ((aligned(4)))
 
 extern volatile uint8_t SD_ejection_occured;
 
+static uint8_t sdio_once=0;
 
 static inline void led_on(void)
 {
@@ -301,9 +302,13 @@ int _main(uint32_t task_id)
      *   SDIO is waiting for READ/WRITE command
      *   from IPC interface
      *******************************************/
+    /*
+       512 nytes is the mandatory blocksize for SD card >= HC
+       it is also mandatorily support by the other cards so it can be hardcoded
+    */
+    sd_set_block_len(512);
 
     printf("SDIO main loop starting\n");
-
     /*
      * Main waiting loopt. The task main thread is awoken by any external
      * event such as ISR or IPC.
@@ -338,11 +343,6 @@ int _main(uint32_t task_id)
             while (1) ;
             /* DO NOT GO ANY FURTHER wait actively for the reset */
         }
-#if 0
-        if ((ret != SYS_E_DONE) && (!SD_ejection_occured)) {
-            continue;
-        }
-#endif
 
         switch (ipc_mainloop_cmd.magic) {
 
@@ -369,6 +369,7 @@ int _main(uint32_t task_id)
                 for (uint8_t i = 0; i < 4; ++i) {
                    ipc_sync_cmd_data.data.u32[i + 2] = cid_p[i];
                 }
+
                 ret =
                     sys_ipc(IPC_SEND_SYNC, id_crypto,
                             sizeof(struct sync_command_data),
@@ -383,6 +384,7 @@ int _main(uint32_t task_id)
             }
 
             case MAGIC_STORAGE_SCSI_BLOCK_NUM_CMD:
+
                 /* SDIO/USB block number synchronization */
                 ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
                 ipc_sync_cmd_data.magic = MAGIC_STORAGE_SCSI_BLOCK_NUM_RESP;
@@ -401,7 +403,48 @@ int _main(uint32_t task_id)
                     goto error;
                 }
                 break;
-
+            case MAGIC_STORAGE_PASSWD:
+                    ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
+                    if(ipc_sync_cmd_data.data.u32[0]>16) {
+                        printf("Wrong unlocking data %d\n",ipc_sync_cmd_data.data.u32[0]);
+#if SDIO_DEBUG
+                        printf("passwd recu par SDIO  : \n");
+                        hexdump(&(ipc_sync_cmd_data.data.u8[4]),ipc_sync_cmd_data.data.u32[0]);
+#endif
+                    goto error;
+                    }
+              if(!sdio_once) {
+                sdio_once=0xaa;
+                sd_unlock_card((uint8_t*)"dummy",0);
+                /* Check card status and perform unlocking */
+                if(sd_is_locked()) {
+                  printf("unlocking card\n");
+                  sd_unlock_card((uint8_t*)(ipc_sync_cmd_data.data.u8+4),ipc_sync_cmd_data.data.u32[0]);
+                }
+                else {
+                  printf("card has blank password, I lock it!\n");
+#if 1
+                  sd_set_password((uint8_t*)"dummy",0,(uint8_t*)(ipc_sync_cmd_data.data.u8+4),ipc_sync_cmd_data.data.u32[0]);
+                  sd_unlock_card((uint8_t*)(ipc_sync_cmd_data.data.u8+4),ipc_sync_cmd_data.data.u32[0]);
+#endif
+                }
+                sd_set_bus_width_sync(4);
+               }
+                ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
+                ipc_sync_cmd_data.magic = MAGIC_STORAGE_PASSWD_RESP;
+                ipc_sync_cmd_data.state = SYNC_DONE;
+                ipc_sync_cmd_data.data_size = 0;
+                ret =
+                    sys_ipc(IPC_SEND_SYNC, id_crypto,
+                            sizeof(struct sync_command_data),
+                            (char *) &ipc_sync_cmd_data);
+                if (ret != SYS_E_DONE) {
+#if SDIO_DEBUG
+                    printf("%s:%d Oops ! ret = %d\n", __func__, __LINE__, ret);
+#endif
+                    goto error;
+                }
+                break;
             case MAGIC_DATA_WR_DMA_REQ:
 #if CONFIG_WOOKEY
                 led_on();
