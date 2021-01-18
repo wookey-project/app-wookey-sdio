@@ -24,7 +24,7 @@
  * without compiler complain. argc/argv is not a goot idea in term
  * of size and calculation in a microcontroler
  */
-#define SDIO_DEBUG 0
+#define SDIO_DEBUG 1
 #define SDIO_BUF_SIZE 16384
 
 /* NOTE: alignment due to DMA */
@@ -407,12 +407,13 @@ int _main(uint32_t task_id)
                     ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
                     if(ipc_sync_cmd_data.data.u32[0]>16) {
                         printf("Wrong unlocking data %d\n",ipc_sync_cmd_data.data.u32[0]);
-#if SDIO_DEBUG
-                        printf("passwd recu par SDIO  : \n");
-                        hexdump(&(ipc_sync_cmd_data.data.u8[4]),ipc_sync_cmd_data.data.u32[0]);
-#endif
-                    goto error;
+                        goto error;
                     }
+#if SDIO_DEBUG
+               printf("passwd received by SDIO: \n");
+               hexdump(&(ipc_sync_cmd_data.data.u8[4]),ipc_sync_cmd_data.data.u32[0]);
+#endif
+
               if(!sdio_once) {
                 sdio_once=0xaa;
                 sd_unlock_card((uint8_t*)"dummy",0);
