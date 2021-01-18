@@ -24,7 +24,7 @@
  * without compiler complain. argc/argv is not a goot idea in term
  * of size and calculation in a microcontroler
  */
-#define SDIO_DEBUG 1
+#define SDIO_DEBUG 0
 #define SDIO_BUF_SIZE 16384
 
 /* NOTE: alignment due to DMA */
@@ -33,7 +33,9 @@ __attribute__ ((aligned(4)))
 
 extern volatile uint8_t SD_ejection_occured;
 
-static uint8_t sdio_once=0;
+#if CONFIG_USE_SD_LOCK /* We only use SD lock if it has been asked by the user! */
+static uint8_t sdio_once = 0;
+#endif
 
 static inline void led_on(void)
 {
@@ -403,6 +405,8 @@ int _main(uint32_t task_id)
                     goto error;
                 }
                 break;
+
+#if CONFIG_USE_SD_LOCK /* We only use SD lock if it has been asked by the user! */
             case MAGIC_STORAGE_PASSWD:
                     ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
                     if(ipc_sync_cmd_data.data.u32[0]>16) {
@@ -446,6 +450,8 @@ int _main(uint32_t task_id)
                     goto error;
                 }
                 break;
+#endif /* CONFIG_USE_SD_LOCK */
+
             case MAGIC_DATA_WR_DMA_REQ:
 #if CONFIG_WOOKEY
                 led_on();
