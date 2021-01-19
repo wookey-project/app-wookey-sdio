@@ -433,7 +433,6 @@ int _main(uint32_t task_id)
                   sd_unlock_card((uint8_t*)(ipc_sync_cmd_data.data.u8+4),ipc_sync_cmd_data.data.u32[0]);
 #endif
                 }
-                sd_set_bus_width_sync(4);
                }
                 ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
                 ipc_sync_cmd_data.magic = MAGIC_STORAGE_PASSWD_RESP;
