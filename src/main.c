@@ -33,7 +33,9 @@ __attribute__ ((aligned(4)))
 
 extern volatile uint8_t SD_ejection_occured;
 
-static uint8_t sdio_once=0;
+#if CONFIG_USE_SD_LOCK /* We only use SD lock if it has been asked by the user! */
+static uint8_t sdio_once = 0;
+#endif
 
 static inline void led_on(void)
 {
@@ -403,16 +405,19 @@ int _main(uint32_t task_id)
                     goto error;
                 }
                 break;
+
+#if CONFIG_USE_SD_LOCK /* We only use SD lock if it has been asked by the user! */
             case MAGIC_STORAGE_PASSWD:
                     ipc_sync_cmd_data = ipc_mainloop_cmd.sync_cmd_data;
                     if(ipc_sync_cmd_data.data.u32[0]>16) {
                         printf("Wrong unlocking data %d\n",ipc_sync_cmd_data.data.u32[0]);
-#if SDIO_DEBUG
-                        printf("passwd recu par SDIO  : \n");
-                        hexdump(&(ipc_sync_cmd_data.data.u8[4]),ipc_sync_cmd_data.data.u32[0]);
-#endif
-                    goto error;
+                        goto error;
                     }
+#if SDIO_DEBUG
+               printf("passwd received by SDIO: \n");
+               hexdump(&(ipc_sync_cmd_data.data.u8[4]),ipc_sync_cmd_data.data.u32[0]);
+#endif
+
               if(!sdio_once) {
                 sdio_once=0xaa;
                 sd_unlock_card((uint8_t*)"dummy",0);
@@ -445,6 +450,8 @@ int _main(uint32_t task_id)
                     goto error;
                 }
                 break;
+#endif /* CONFIG_USE_SD_LOCK */
+
             case MAGIC_DATA_WR_DMA_REQ:
 #if CONFIG_WOOKEY
                 led_on();
